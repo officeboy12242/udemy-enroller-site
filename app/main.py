@@ -242,14 +242,36 @@ async def logout(request: Request, csrf_token: str = Form("")):
 # ── Dashboard ───────────────────────────────────────────────────────────────
 
 @app.get("/dashboard", response_class=HTMLResponse)
-def dashboard(request: Request, user=Depends(require_user)):
+def dashboard(request: Request, user=Depends(require_user), linked: str = ""):
     accounts = store.get_accounts(user["id"])
     state = store.get_auto_state(user["id"])
     history = store.get_history(user["id"], limit=10)
+
+    flash = None
+    if linked == "1":
+        flash = ("ok", "Udemy account linked from your browser! Token captured automatically.")
+    elif linked.startswith("e:"):
+        from urllib.parse import unquote
+        flash = ("error", unquote(linked[2:]))
+
+    # Bookmarklet origin follows whatever host the user is browsing
+    host = request.headers.get("host", f"127.0.0.1:{config.PORT}")
+    origin = f"{request.url.scheme}://{host}"
+    bookmarklet = (
+        "javascript:(function(){"
+        "var m=document.cookie.match(/(?:^|;\\s*)access_token=([^;]+)/);"
+        "if(!m){alert('Udemy access_token not visible - make sure you are logged in to udemy.com in this browser. If it still fails, use the token paste option on the site.');return;}"
+        "var c=(document.cookie.match(/(?:^|;\\s*)client_id=([^;]+)/)||[])[1]||'';"
+        f"location.href='{origin}/grab?t='+encodeURIComponent(m[1])+'&c='+encodeURIComponent(c);"
+        "})()"
+    )
+
     return _render(request, "dashboard.html", {
         "accounts": accounts,
         "auto": state,
         "recent": history,
+        "flash": flash,
+        "bookmarklet": bookmarklet,
         "today_count": store.count_enrollments(user["id"], since=datetime.now(timezone.utc).date().isoformat()),
         "total_count": store.count_enrollments(user["id"]),
         "interval_min": config.AUTO_ENROLL_INTERVAL // 60,
@@ -293,6 +315,35 @@ async def auto_status(user=Depends(require_user)):
         "total_enrolled": state.get("total_enrolled", 0),
         "batch": batch,
     }
+
+
+# ── One-click browser grab (bookmarklet target) ────────────────────────────
+
+@app.get("/grab")
+def grab_token(request: Request, user=Depends(require_user), t: str = "", c: str = ""):
+    """Receives the token pulled from a logged-in udemy.com tab by the bookmarklet."""
+    from urllib.parse import quote
+    token = (t or "").strip()
+    client_id = (c or "").strip()
+    if len(token) < 20:
+        return RedirectResponse(
+            f"/dashboard?linked=e:{quote('No token received — are you logged in to udemy.com?')}",
+            status_code=303,
+        )
+    info = verify_token(token, client_id)
+    if not info.get("valid"):
+        return RedirectResponse(
+            f"/dashboard?linked=e:{quote('Udemy rejected the token from your browser (' + str(info.get('error')) + '). It may be expired - log in to udemy.com again.')}",
+            status_code=303,
+        )
+    store.upsert_account(
+        user_id=user["id"],
+        access_token=token,
+        client_id=info.get("client_id") or client_id,
+        udemy_user_id=info.get("udemy_user_id"),
+        udemy_name=info.get("name"),
+    )
+    return RedirectResponse("/dashboard?linked=1", status_code=303)
 
 
 # ── Account linking ─────────────────────────────────────────────────────────
