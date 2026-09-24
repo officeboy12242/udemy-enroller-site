@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import config, enroll_service, security, store
+from . import browser_grab
 from .feed import get_free_courses
 from .udemy_enroller import UdemyAutoEnroller
 from .udemy_login import UdemyLoginError, login_with_password, verify_token
@@ -87,6 +88,9 @@ async def security_headers(request: Request, call_next):
     resp.headers["X-Frame-Options"] = "DENY"
     resp.headers["Referrer-Policy"] = "same-origin"
     resp.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if "text/html" in resp.headers.get("content-type", ""):
+        resp.headers["Cache-Control"] = "no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
     return resp
 
 
@@ -158,10 +162,15 @@ def index(request: Request):
 
 
 @app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request):
+def login_page(request: Request, err: str = ""):
     if current_user(request):
         return RedirectResponse("/dashboard", status_code=303)
-    return _render(request, "login.html", {"error": None, "mode": "password"})
+    from urllib.parse import unquote
+    return _render(request, "login.html", {
+        "error": unquote(err) if err else None,
+        "mode": "password",
+        "grab": browser_grab.get_last_result(),
+    })
 
 
 @app.post("/login")
@@ -255,16 +264,7 @@ def dashboard(request: Request, user=Depends(require_user), linked: str = ""):
         flash = ("error", unquote(linked[2:]))
 
     # Bookmarklet origin follows whatever host the user is browsing
-    host = request.headers.get("host", f"127.0.0.1:{config.PORT}")
-    origin = f"{request.url.scheme}://{host}"
-    bookmarklet = (
-        "javascript:(function(){"
-        "var m=document.cookie.match(/(?:^|;\\s*)access_token=([^;]+)/);"
-        "if(!m){alert('Udemy access_token not visible - make sure you are logged in to udemy.com in this browser. If it still fails, use the token paste option on the site.');return;}"
-        "var c=(document.cookie.match(/(?:^|;\\s*)client_id=([^;]+)/)||[])[1]||'';"
-        f"location.href='{origin}/grab?t='+encodeURIComponent(m[1])+'&c='+encodeURIComponent(c);"
-        "})()"
-    )
+    bookmarklet = _bookmarklet_for(request, "/grab")
 
     return _render(request, "dashboard.html", {
         "accounts": accounts,
@@ -319,27 +319,136 @@ async def auto_status(user=Depends(require_user)):
 
 # ── One-click browser grab (bookmarklet target) ────────────────────────────
 
+def _verify_udemy_token(token: str, client_id: str) -> dict | None:
+    if len(token or "") < 20:
+        return None
+    info = verify_token(token.strip(), (client_id or "").strip())
+    return info if info.get("valid") else None
+
+
+def _bookmarklet_for(request: Request, target: str) -> str:
+    host = request.headers.get("host", f"127.0.0.1:{config.PORT}")
+    origin = f"{request.url.scheme}://{host}"
+    return (
+        "javascript:(function(){"
+        "function gv(n){var ck=' '+document.cookie+';';"
+        "var i=ck.indexOf('; '+n+'=');"
+        "return i<0?'':ck.substring(i+n.length+3).split(';')[0];}"
+        "var t=gv('access_token');"
+        "if(!t){alert('Udemy access_token not visible - log in to udemy.com in this browser first.');return;}"
+        "var c=gv('client_id');"
+        f"location.href='{origin}{target}?t='+encodeURIComponent(t)+'&c='+encodeURIComponent(c);"
+        "})()"
+    )
+
+
+@app.post("/grab-close-edge")
+def grab_close_edge(request: Request):
+    """User-consented force close of Microsoft Edge so its profile unlocks."""
+    ok = browser_grab.close_edge()
+    from urllib.parse import quote
+    if ok:
+        return RedirectResponse(f"/grab-login", status_code=303)
+    return RedirectResponse(
+        f"/login?err={quote('Could not close Edge automatically — close it manually and click Grab again.')}",
+        status_code=303,
+    )
+
+
+@app.get("/grab-login")
+def grab_login_start(request: Request):
+    """Start the backend browser session (non-blocking) and show the waiting page."""
+    browser_grab.reset()
+    if not browser_grab.browser_busy.is_set():
+        threading.Thread(target=browser_grab.grab_from_browser, kwargs={"timeout": 180}, daemon=True).start()
+    return RedirectResponse("/grab-wait", status_code=303)
+@app.get("/grab-wait", response_class=HTMLResponse)
+def grab_wait(request: Request):
+    if current_user(request):
+        return RedirectResponse("/dashboard", status_code=303)
+    return _render(request, "grab_wait.html", {})
+
+
+@app.get("/api/grab-status")
+def grab_status(request: Request):
+    """Polled by the waiting page. When the token lands, the user is logged in here
+    (or the account is linked if they already had a site session)."""
+    res = browser_grab.get_last_result()
+    if not (res.get("ok") and res.get("status") == "logged_in"):
+        return {"status": res.get("status", "running")}
+
+    info = res  # contains udemy_user_id, name, access_token, client_id
+    udemy_uid = info.get("udemy_user_id")
+    udemy_name = info.get("name")
+
+    existing = current_user(request)
+    if existing:
+        # Site session present → link/refresh this Udemy account for that user
+        try:
+            store.upsert_account(
+                user_id=existing["id"],
+                access_token=info["access_token"],
+                client_id=info.get("client_id") or "",
+                udemy_user_id=udemy_uid,
+                udemy_name=udemy_name,
+            )
+        except ValueError:
+            browser_grab.reset()
+            return {"status": "error", "message": "That Udemy account is linked to another site user."}
+        browser_grab.reset()
+        return JSONResponse({"status": "linked", "name": udemy_name})
+
+    row = store._db().execute(
+        "SELECT user_id FROM accounts WHERE udemy_user_id=?", (udemy_uid,)
+    ).fetchone() if udemy_uid is not None else None
+
+    if row:
+        user_id = row["user_id"]
+    else:
+        placeholder_email = f"udemy_{udemy_uid}@users.enroller.local"
+        user = store.get_user_by_email(placeholder_email)
+        if user:
+            user_id = user["id"]
+        else:
+            import secrets as _secrets
+            user_id = store.create_user(placeholder_email, _secrets.token_urlsafe(24))
+    try:
+        store.upsert_account(
+            user_id=user_id,
+            access_token=info["access_token"],
+            client_id=info.get("client_id") or "",
+            udemy_user_id=udemy_uid,
+            udemy_name=udemy_name,
+        )
+    except ValueError:
+        pass
+
+    # Token consumed — clear so a future poll doesn't re-login
+    browser_grab.reset()
+
+    resp = JSONResponse({"status": "logged_in", "name": udemy_name})
+    token = security.sign_session({"uid": user_id})
+    resp.set_cookie(
+        config.SESSION_COOKIE_NAME, token,
+        max_age=config.SESSION_MAX_AGE, httponly=True, samesite="lax", path="/",
+    )
+    return resp
+
+
 @app.get("/grab")
 def grab_token(request: Request, user=Depends(require_user), t: str = "", c: str = ""):
     """Receives the token pulled from a logged-in udemy.com tab by the bookmarklet."""
     from urllib.parse import quote
-    token = (t or "").strip()
-    client_id = (c or "").strip()
-    if len(token) < 20:
+    info = _verify_udemy_token(t, c)
+    if not info:
         return RedirectResponse(
-            f"/dashboard?linked=e:{quote('No token received — are you logged in to udemy.com?')}",
-            status_code=303,
-        )
-    info = verify_token(token, client_id)
-    if not info.get("valid"):
-        return RedirectResponse(
-            f"/dashboard?linked=e:{quote('Udemy rejected the token from your browser (' + str(info.get('error')) + '). It may be expired - log in to udemy.com again.')}",
+            f"/dashboard?linked=e:{quote('Udemy rejected the token from your browser (not logged in). It may be expired - log in to udemy.com again.')}",
             status_code=303,
         )
     store.upsert_account(
         user_id=user["id"],
-        access_token=token,
-        client_id=info.get("client_id") or client_id,
+        access_token=t.strip(),
+        client_id=info.get("client_id") or (c or "").strip(),
         udemy_user_id=info.get("udemy_user_id"),
         udemy_name=info.get("name"),
     )

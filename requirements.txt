@@ -7,3 +7,4 @@ beautifulsoup4>=4.12
 lxml>=5.0
 cryptography>=42.0
 itsdangerous>=2.1
+DrissionPage>=4.1

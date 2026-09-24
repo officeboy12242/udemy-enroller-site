@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Connecting Udemy… — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="ud-auth-wrap">
+  <div class="ud-auth-card" style="text-align:center">
+    <h1 class="ud-auth-title" id="gw-title">Opening Udemy…</h1>
+    <p class="ud-auth-sub" id="gw-msg">
+      Opening your browser (Edge with your real profile). If you're already logged in
+      to Udemy there, you'll be signed in automatically in a few seconds.
+    </p>
+    <div class="ud-progress" style="margin:18px 0"><div id="gw-bar" style="width:8%"></div></div>
+    <div id="gw-status" class="ud-muted">Checking Udemy login…</div>
+
+    <div id="gw-edge" style="display:none; margin-top:20px; text-align:left">
+      <hr class="ud-divider">
+      <p style="font-weight:700; margin:0 0 8px">Microsoft Edge is running</p>
+      <p class="ud-muted" style="margin:0 0 12px">
+        Edge locks its login data while it's open. Close Edge completely
+        (check the system tray too), then grab again.
+      </p>
+      <form method="post" action="/grab-close-edge">
+        <button class="ud-btn ud-btn-primary ud-btn-block" type="submit">Close Edge &amp; retry grab</button>
+      </form>
+    </div>
+
+    <div id="gw-manual" style="display:none; margin-top:20px; text-align:left">
+      <hr class="ud-divider">
+      <p style="font-weight:700; margin:0 0 8px">Not logged in yet?</p>
+      <p class="ud-muted" style="margin:0 0 12px">
+        Log in to Udemy inside the browser window that just opened, then
+        <a href="/grab-login">retry the grab</a>. You can also
+        <a href="#" id="gw-show-pw">log in with email &amp; password</a> instead.
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const bar = document.getElementById('gw-bar');
+const statusEl = document.getElementById('gw-status');
+const title = document.getElementById('gw-title');
+let tries = 0;
+
+document.getElementById('gw-show-pw').addEventListener('click', function(e){
+  e.preventDefault();
+  location.href = '/login';
+});
+
+async function poll() {
+  tries++;
+  bar.style.width = Math.min(95, 8 + tries * 2) + '%';
+  try {
+    const res = await fetch('/api/grab-status', {headers: {'X-Requested-With': 'XMLHttpRequest'}});
+    const s = await res.json();
+    if (s.status === 'logged_in') {
+      title.textContent = 'Welcome' + (s.name ? ', ' + s.name : '') + '!';
+      statusEl.textContent = 'Udemy login captured — taking you to your dashboard…';
+      bar.style.width = '100%';
+      setTimeout(function(){ location.href = '/dashboard'; }, 900);
+      return;
+    }
+    if (s.status === 'linked') {
+      title.textContent = 'Account linked!';
+      statusEl.textContent = (s.name || 'Udemy account') + ' connected — opening dashboard…';
+      bar.style.width = '100%';
+      setTimeout(function(){ location.href = '/dashboard?linked=1'; }, 900);
+      return;
+    }
+    if (s.status === 'close_edge') {
+      title.textContent = 'Edge needs to close first';
+      statusEl.textContent = s.message || 'Edge is locking its profile.';
+      document.getElementById('gw-edge').style.display = '';
+      bar.style.width = '100%';
+      return;
+    }
+    if (s.status === 'busy') {
+      statusEl.textContent = 'Another grab is already running…';
+    }
+    if (s.status === 'error') {
+      title.textContent = 'Grab failed';
+      statusEl.textContent = s.message || 'Browser automation error — try again or use email & password.';
+      document.getElementById('gw-manual').style.display = '';
+      bar.style.width = '100%';
+      return;
+    }
+    if (s.status === 'not_logged_in') {
+      title.textContent = 'Udemy login not detected';
+      statusEl.innerHTML = 'Log in inside the Chrome window, then <a href="/grab-login">try the grab again</a> — or <a href="/login">use email &amp; password</a>.';
+      document.getElementById('gw-manual').style.display = '';
+      bar.style.width = '100%';
+      return;
+    }
+    if (s.status === 'error' || s.status === 'busy') {
+      statusEl.textContent = 'Still trying… (' + s.status + ')';
+    }
+  } catch (e) { /* transient */ }
+  setTimeout(poll, 2000);
+}
+poll();
+</script>
+{% endblock %}

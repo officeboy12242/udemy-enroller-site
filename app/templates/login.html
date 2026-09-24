@@ -21,6 +21,24 @@
       <button class="ud-btn ud-btn-primary ud-btn-block" type="submit">Log in</button>
     </form>
 
+    {% if grab %}
+    <hr class="ud-divider">
+    <div style="text-align:center">
+      <strong style="font-size:14px">⚡ Log in with Udemy (easiest)</strong>
+      <p class="ud-muted" style="margin:6px 0 10px; font-size:13px">
+        One click: the app opens udemy.com in its browser, checks if you're
+        already logged in, grabs the token, and signs you in here automatically.
+      </p>
+      <a href="/grab-login" class="ud-btn ud-btn-primary ud-btn-block">Grab Udemy login</a>
+      {% if grab.status == 'not_logged_in' %}
+      <p class="ud-hint" style="margin-top:10px">Last try: login not detected in the app's browser.
+        Log in inside that Chrome window once — it stays logged in for next time.</p>
+      {% elif grab.status == 'error' %}
+      <p class="ud-hint" style="margin-top:10px">Last try failed: {{ grab.message or 'browser error' }}</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <div class="ud-auth-foot">
       Don't have an account? <a href="/register">Create one</a>
     </div>

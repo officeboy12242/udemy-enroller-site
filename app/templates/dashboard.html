@@ -91,18 +91,14 @@
 
   {# ── One-click browser grab ── #}
   <div class="ud-alert" style="border-color:var(--purple); background:#F7F1FE">
-    <strong>⚡ Easiest way — if you're already logged in to udemy.com in this browser:</strong>
-    <ol style="margin:10px 0 0; padding-left:20px; font-size:14px">
-      <li>Drag this button to your bookmarks bar:
-        <a href="{{ bookmarklet }}" class="ud-btn ud-btn-primary ud-btn-sm"
-           onclick="alert('Drag me to your bookmarks bar! Then open udemy.com and click me there.'); return false;"
-           style="cursor:grab; margin:0 6px">+ Grab Udemy login</a>
-      </li>
-      <li>Open <a href="https://www.udemy.com" target="_blank" rel="noopener">udemy.com</a> (make sure you're logged in)</li>
-      <li>Click the <strong>+ Grab Udemy login</strong> bookmark — you'll land back here, linked automatically</li>
-    </ol>
+    <strong>⚡ Easiest way — one click, no typing:</strong>
+    <span style="font-size:14px">The app opens udemy.com in its own Chrome window. If that browser is already
+    logged in (it stays logged in between tries), the token is grabbed and linked automatically.</span>
+    <div style="margin-top:10px">
+      <a href="/grab-login" class="ud-btn ud-btn-primary ud-btn-sm">Grab Udemy login</a>
+    </div>
   </div>
-  <p class="ud-muted" style="margin:8px 0 4px">…or log in with email &amp; password below (token captured automatically). If Udemy asks for a captcha, use the token option.</p>
+  <p class="ud-muted" style="margin:8px 0 4px">…or link with email &amp; password below (token captured automatically). If Udemy asks for a captcha, use the token option.</p>
   <p class="ud-muted">
     Log in with your Udemy email &amp; password — the access token is captured automatically.
     If Udemy asks for a captcha, use the token option instead.
