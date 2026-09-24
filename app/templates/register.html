@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Create account — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="ud-auth-wrap">
+  <div class="ud-auth-card">
+    <h1 class="ud-auth-title">Create your account</h1>
+    <p class="ud-auth-sub">An access code is required to register</p>
+
+    {% if error %}<div class="ud-form-error">{{ error }}</div>{% endif %}
+
+    <form method="post" action="/register">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="ud-field">
+        <label class="ud-label" for="email">Email</label>
+        <input class="ud-input" type="email" id="email" name="email" required autocomplete="email">
+      </div>
+      <div class="ud-field">
+        <label class="ud-label" for="password">Password</label>
+        <input class="ud-input" type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
+        <div class="ud-hint">At least 8 characters</div>
+      </div>
+      <div class="ud-field">
+        <label class="ud-label" for="password2">Confirm password</label>
+        <input class="ud-input" type="password" id="password2" name="password2" required minlength="8" autocomplete="new-password">
+      </div>
+      <div class="ud-field">
+        <label class="ud-label" for="access_code">Access code</label>
+        <input class="ud-input" type="text" id="access_code" name="access_code" required autocomplete="off">
+        <div class="ud-hint">Ask the site owner for this code</div>
+      </div>
+      <button class="ud-btn ud-btn-primary ud-btn-block" type="submit">Create account</button>
+    </form>
+
+    <div class="ud-auth-foot">
+      Already registered? <a href="/login">Log in</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

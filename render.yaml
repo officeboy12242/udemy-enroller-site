@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: udemy-enroller-site
+    runtime: python
+    plan: free
+    healthCheckPath: /healthz
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: SITE_ACCESS_CODE
+        sync: false
+      - key: AUTO_ENROLL_INTERVAL
+        value: "600"
+      - key: AUTO_ENROLL_ENABLED
+        value: "1"
+      - key: PYTHON_VERSION
+        value: "3.11.9"

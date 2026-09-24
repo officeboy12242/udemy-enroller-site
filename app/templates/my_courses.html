@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}My courses — {{ app_name }}{% endblock %}
+{% block content %}
+<h1 class="ud-page-title">My courses</h1>
+<p class="ud-page-sub">Search the library of your linked Udemy account(s).</p>
+
+<form method="get" action="/my-courses" class="ud-actions-row" style="margin-bottom:22px">
+  <input class="ud-input" style="max-width:420px" type="search" name="q" value="{{ q }}"
+         placeholder="Search your enrolled courses…">
+  <select class="ud-input" style="max-width:220px" name="account_id">
+    <option value="0">All accounts</option>
+    {% for acc in accounts %}
+    <option value="{{ acc.id }}" {% if account_id == acc.id %}selected{% endif %}>
+      {{ acc.udemy_name or 'Udemy account' }}
+    </option>
+    {% endfor %}
+  </select>
+  <button class="ud-btn ud-btn-primary" type="submit">Search</button>
+</form>
+
+{% if error %}
+<div class="ud-alert ud-alert-warn">Search failed: {{ error }}</div>
+{% endif %}
+
+{% if searched %}
+  {% if results %}
+  <div class="ud-courses">
+    {% for c in results %}
+    <div class="ud-course-card">
+      <div class="ud-thumb">
+        {% if c.image %}<img src="{{ c.image }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+        {% else %}<div class="no-img">▶</div>{% endif %}
+      </div>
+      <div class="ud-course-body">
+        <div class="ud-course-title" title="{{ c.title }}">{{ c.title[:68] }}{% if c.title|length > 68 %}…{% endif %}</div>
+        <div class="ud-course-meta">{{ c.account_name }}{% if c.content_info %} · {{ c.content_info }}{% endif %}</div>
+        <a class="ud-btn ud-btn-outline ud-btn-sm" href="{{ c.url or 'https://www.udemy.com' }}" target="_blank" rel="noopener">Open in Udemy →</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="ud-card"><p class="ud-muted">No courses matched “{{ q }}”.</p></div>
+  {% endif %}
+{% else %}
+  {% if not accounts %}
+  <div class="ud-card"><p class="ud-muted">Link a Udemy account on the <a href="/dashboard">dashboard</a> first.</p></div>
+  {% endif %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}History — {{ app_name }}{% endblock %}
+{% block content %}
+<h1 class="ud-page-title">Enrollment history</h1>
+<p class="ud-page-sub">{{ total }} course(s) enrolled through this site, all-time.</p>
+
+{% if rows %}
+<table class="ud-table">
+  <thead><tr><th>Course</th><th>Account</th><th>Source</th><th>Enrolled at (UTC)</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><a href="{{ r.course_url }}" target="_blank" rel="noopener">{{ r.title or r.slug }}</a></td>
+      <td>#{{ r.account_id }}</td>
+      <td><span class="ud-chip {{ 'ud-chip-on' if r.source == 'auto' else 'ud-chip-off' }}">{{ r.source }}</span></td>
+      <td class="ud-muted">{{ r.created_at[:19].replace('T', ' ') }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if pages > 1 %}
+<div class="ud-pager">
+  {% if page > 1 %}<a class="ud-btn ud-btn-ghost ud-btn-sm" href="/history?page={{ page - 1 }}">← Newer</a>{% endif %}
+  <span class="ud-muted">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="ud-btn ud-btn-ghost ud-btn-sm" href="/history?page={{ page + 1 }}">Older →</a>{% endif %}
+</div>
+{% endif %}
+{% else %}
+<div class="ud-card"><p class="ud-muted">Nothing here yet. Enroll from the <a href="/courses">Free Courses</a> page or let auto-enroll do its thing.</p></div>
+{% endif %}
+{% endblock %}

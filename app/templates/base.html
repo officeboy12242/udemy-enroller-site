@@ -1,0 +1,61 @@
+{# Udemy-style base layout #}
+{% set nav_user = user %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ app_name }}{% endblock %}</title>
+<link rel="stylesheet" href="/static/css/udemy.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<header class="ud-header">
+  <div class="ud-header-inner">
+    <a class="ud-brand" href="/">
+      <span class="ud-brand-mark">▲</span>
+      <span class="ud-brand-word">udemy</span>
+      <span class="ud-brand-suffix">enroller</span>
+    </a>
+    {% if nav_user %}
+    <nav class="ud-nav">
+      <a href="/dashboard" class="ud-nav-link {% if request.url.path == '/dashboard' %}active{% endif %}">Dashboard</a>
+      <a href="/courses" class="ud-nav-link {% if request.url.path == '/courses' %}active{% endif %}">Free Courses</a>
+      <a href="/history" class="ud-nav-link {% if request.url.path == '/history' %}active{% endif %}">History</a>
+      <a href="/my-courses" class="ud-nav-link {% if request.url.path == '/my-courses' %}active{% endif %}">My Courses</a>
+    </nav>
+    <div class="ud-header-right">
+      <form method="post" action="/logout" class="ud-logout-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="ud-btn ud-btn-ghost ud-btn-sm" type="submit">Log out</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+</header>
+
+<main class="ud-main">
+{% block content %}{% endblock %}
+</main>
+
+<footer class="ud-footer">
+  <div>Udemy Enroller — personal automation tool. Not affiliated with Udemy, Inc.</div>
+  <div class="ud-footer-dim">© {{ year }}</div>
+</footer>
+
+<script>
+async function postForm(url, data) {
+  const body = new URLSearchParams(data);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+    body,
+  });
+  let json = null;
+  try { json = await res.json(); } catch (e) { /* non-JSON */ }
+  return {ok: res.ok, status: res.status, json};
+}
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

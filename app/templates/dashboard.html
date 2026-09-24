@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ app_name }}{% endblock %}
+{% block content %}
+<h1 class="ud-page-title">Welcome back{% if accounts and accounts[0].udemy_name %}, {{ accounts[0].udemy_name }}{% endif %}</h1>
+<p class="ud-page-sub">Your auto-enroller runs on the server 24/7 — even when this page is closed.</p>
+
+<div class="ud-stats">
+  <div class="ud-stat"><div class="num" id="stat-today">{{ today_count }}</div><div class="lbl">Enrolled today</div></div>
+  <div class="ud-stat"><div class="num">{{ total_count }}</div><div class="lbl">Enrolled all-time</div></div>
+  <div class="ud-stat"><div class="num">{{ accounts|length }}</div><div class="lbl">Linked accounts</div></div>
+  <div class="ud-stat"><div class="num">{{ auto.total_enrolled if auto else 0 }}</div><div class="lbl">Auto-enrolled total</div></div>
+</div>
+
+{# ── Auto-enroll command center ── #}
+<div class="ud-card" id="auto-card">
+  <h2>⚡ Auto-Enroll Engine</h2>
+  <div class="ud-actions-row" style="margin-bottom:14px">
+    <span>Status:</span>
+    {% set enabled = auto and auto.enabled %}
+    <span class="ud-chip {% if enabled %}ud-chip-on{% else %}ud-chip-off{% endif %}" id="auto-enabled-chip">
+      {{ 'ON — runs every ' + interval_min|string + ' min' if enabled else 'OFF' }}
+    </span>
+    <span class="ud-chip ud-chip-run" id="auto-running-chip" style="display:none">Running now…</span>
+  </div>
+
+  <div id="auto-detail" class="ud-muted" style="margin-bottom:16px">
+    {% if auto and auto.last_run %}
+      Last run: {{ auto.last_run[:19].replace('T', ' ') }} UTC — {{ auto.last_result or '—' }}
+      {% if auto.next_run %} · Next: {{ auto.next_run[:19].replace('T', ' ') }} UTC{% endif %}
+    {% else %}
+      No runs yet. Turn auto-enroll ON or click Enroll Now.
+    {% endif %}
+  </div>
+
+  <div class="ud-actions-row">
+    <form method="post" action="/settings/auto-enroll" class="ud-inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="enabled" value="{{ '0' if enabled else '1' }}">
+      <button class="ud-btn {{ 'ud-btn-ghost' if enabled else 'ud-btn-primary' }}" type="submit">
+        {{ 'Turn OFF auto-enroll' if enabled else 'Turn ON auto-enroll' }}
+      </button>
+    </form>
+    <form method="post" action="/settings/auto-enroll-now" class="ud-inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="ud-btn ud-btn-outline" type="submit" id="btn-enroll-now">Enroll Now</button>
+    </form>
+    <a class="ud-btn ud-btn-ghost" href="/courses">Browse free courses →</a>
+  </div>
+</div>
+
+{# ── Linked accounts ── #}
+<div class="ud-card">
+  <h2>🔗 Linked Udemy accounts</h2>
+  {% if accounts %}
+  <table class="ud-table">
+    <thead><tr><th>Account</th><th>Udemy ID</th><th>Auto</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for acc in accounts %}
+      <tr>
+        <td><strong>{{ acc.udemy_name or 'Udemy account' }}</strong></td>
+        <td>{{ acc.udemy_user_id or '—' }}</td>
+        <td>
+          <form method="post" action="/accounts/{{ acc.id }}/auto-toggle" class="ud-inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="ud-btn ud-btn-sm {{ 'ud-btn-ghost' if acc.auto_enroll else 'ud-btn-outline' }}" type="submit">
+              {{ 'Auto ON' if acc.auto_enroll else 'Auto OFF' }}
+            </button>
+          </form>
+        </td>
+        <td>
+          <form method="post" action="/accounts/{{ acc.id }}/delete" class="ud-inline-form"
+                onsubmit="return confirm('Unlink this Udemy account?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="ud-btn ud-btn-sm ud-btn-danger" type="submit">Unlink</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="ud-muted">No Udemy account linked yet. Link one below — it takes 10 seconds.</p>
+  {% endif %}
+
+  <hr class="ud-divider">
+  <h2 style="font-size:16px">Link a new Udemy account</h2>
+  <p class="ud-muted">
+    Log in with your Udemy email &amp; password — the access token is captured automatically.
+    If Udemy asks for a captcha, use the token option instead.
+  </p>
+
+  <div class="ud-form-error" id="link-error" style="display:none"></div>
+  <div class="ud-form-ok" id="link-ok" style="display:none"></div>
+
+  <form id="link-form">
+    <div class="ud-actions-row" style="margin-bottom:12px">
+      <label><input type="radio" name="link-mode" value="password" checked> Email &amp; password</label>
+      <label><input type="radio" name="link-mode" value="token"> Access token</label>
+    </div>
+
+    <div id="mode-password">
+      <div class="ud-grid ud-grid-2">
+        <div class="ud-field">
+          <label class="ud-label">Udemy email</label>
+          <input class="ud-input" type="email" id="ud-email" autocomplete="off">
+        </div>
+        <div class="ud-field">
+          <label class="ud-label">Udemy password</label>
+          <input class="ud-input" type="password" id="ud-password" autocomplete="off">
+        </div>
+      </div>
+    </div>
+
+    <div id="mode-token" style="display:none">
+      <div class="ud-field">
+        <label class="ud-label">access_token cookie value</label>
+        <input class="ud-input" type="text" id="ud-token" placeholder="Paste from udemy.com cookies (F12 → Application → Cookies)">
+        <div class="ud-hint">
+          On udemy.com press F12 → Application → Cookies → www.udemy.com → copy <code>access_token</code>.
+          Optional: also copy <code>client_id</code>.
+        </div>
+      </div>
+      <div class="ud-field">
+        <label class="ud-label">client_id (optional)</label>
+        <input class="ud-input" type="text" id="ud-client-id" autocomplete="off">
+      </div>
+    </div>
+
+    <input type="hidden" name="csrf_token" id="link-csrf" value="{{ csrf_token }}">
+    <button class="ud-btn ud-btn-primary" type="submit" id="btn-link">Link account</button>
+    <span class="ud-muted" id="link-progress" style="display:none">Contacting Udemy…</span>
+  </form>
+</div>
+
+{# ── Recent enrollments ── #}
+<div class="ud-card">
+  <h2>🕒 Recently enrolled</h2>
+  {% if recent %}
+  <table class="ud-table">
+    <thead><tr><th>Course</th><th>Source</th><th>When (UTC)</th></tr></thead>
+    <tbody>
+    {% for r in recent %}
+      <tr>
+        <td><a href="{{ r.course_url }}" target="_blank" rel="noopener">{{ r.title or r.slug }}</a></td>
+        <td><span class="ud-chip {{ 'ud-chip-on' if r.source == 'auto' else 'ud-chip-off' }}">{{ r.source }}</span></td>
+        <td class="ud-muted">{{ r.created_at[:19].replace('T', ' ') }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p><a href="/history">Full history →</a></p>
+  {% else %}
+  <p class="ud-muted">Nothing enrolled yet. The engine checks for new free courses every {{ interval_min }} minutes when auto-enroll is ON.</p>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Mode switch
+document.querySelectorAll('input[name="link-mode"]').forEach(function(radio){
+  radio.addEventListener('change', function(){
+    document.getElementById('mode-password').style.display = this.value === 'password' ? '' : 'none';
+    document.getElementById('mode-token').style.display = this.value === 'token' ? '' : 'none';
+  });
+});
+
+document.getElementById('link-form').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const errBox = document.getElementById('link-error');
+  const okBox = document.getElementById('link-ok');
+  const prog = document.getElementById('link-progress');
+  const btn = document.getElementById('btn-link');
+  errBox.style.display = 'none'; okBox.style.display = 'none'; prog.style.display = '';
+  btn.disabled = true;
+
+  const mode = document.querySelector('input[name="link-mode"]:checked').value;
+  const data = {
+    csrf_token: document.getElementById('link-csrf').value,
+    mode: mode,
+  };
+  if (mode === 'password') {
+    data.email = document.getElementById('ud-email').value;
+    data.password = document.getElementById('ud-password').value;
+  } else {
+    data.access_token = document.getElementById('ud-token').value;
+    data.client_id = document.getElementById('ud-client-id').value;
+  }
+
+  const res = await postForm('/accounts/link', data);
+  prog.style.display = 'none'; btn.disabled = false;
+  if (res.ok && res.json && res.json.ok) {
+    okBox.textContent = 'Linked as ' + (res.json.name || 'Udemy account') + ' — reloading…';
+    okBox.style.display = '';
+    setTimeout(function(){ location.reload(); }, 900);
+  } else {
+    errBox.textContent = (res.json && res.json.error) || 'Failed to link account.';
+    errBox.style.display = '';
+  }
+});
+
+// Live auto status polling
+async function pollAuto() {
+  try {
+    const res = await fetch('/api/auto-status', {headers: {'X-Requested-With': 'XMLHttpRequest'}});
+    if (!res.ok) return;
+    const s = await res.json();
+    const runChip = document.getElementById('auto-running-chip');
+    const detail = document.getElementById('auto-detail');
+    if (runChip) runChip.style.display = s.running ? '' : 'none';
+    if (detail && s.last_run) {
+      detail.textContent = 'Last run: ' + s.last_run.replace('T', ' ').slice(0, 19) +
+        ' UTC — ' + (s.last_result || '—') +
+        (s.next_run ? (' · Next: ' + s.next_run.replace('T', ' ').slice(0, 19) + ' UTC') : '');
+    }
+  } catch (e) { /* ignore */ }
+}
+setInterval(pollAuto, 5000);
+</script>
+{% endblock %}

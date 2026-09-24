@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Log in — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="ud-auth-wrap">
+  <div class="ud-auth-card">
+    <h1 class="ud-auth-title">Log in to your account</h1>
+    <p class="ud-auth-sub">Access your auto-enrollment dashboard</p>
+
+    {% if error %}<div class="ud-form-error">{{ error }}</div>{% endif %}
+
+    <form method="post" action="/login">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="ud-field">
+        <label class="ud-label" for="email">Email</label>
+        <input class="ud-input" type="email" id="email" name="email" required autofocus autocomplete="email">
+      </div>
+      <div class="ud-field">
+        <label class="ud-label" for="password">Password</label>
+        <input class="ud-input" type="password" id="password" name="password" required autocomplete="current-password">
+      </div>
+      <button class="ud-btn ud-btn-primary ud-btn-block" type="submit">Log in</button>
+    </form>
+
+    <div class="ud-auth-foot">
+      Don't have an account? <a href="/register">Create one</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
