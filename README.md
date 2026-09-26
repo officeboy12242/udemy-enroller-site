@@ -61,12 +61,22 @@ A `render.yaml` blueprint is included. Deploy from a Git repo:
 ### Connecting Udemy accounts when hosted
 
 The "open a Udemy login window" flow only works when the app runs on your own
-PC (it drives a real browser on the host machine). When hosted, the app
-automatically switches the Connect buttons to a **bookmarklet** flow at
-`/connect`: drag one bookmark once, then click it on a logged-in udemy.com tab
-to connect an account. Any captcha / OTP is handled in your own browser. The
-Udemy token is posted in the request body only (never in a URL/log), and the
-bookmark carries a signed connect code you can reset from the Connect page.
+PC (it drives a real browser on the host machine). Udemy also guards every
+login (password and passwordless) with Cloudflare Turnstile, so a server can't
+log in on your behalf. When hosted, the Connect buttons therefore point to
+`/connect`, which uses a small **browser extension** (in `extension/`):
+
+1. Download it from the Connect page (`/connect/extension.zip`), unzip, and
+   load it unpacked (`chrome://extensions` → Developer mode → Load unpacked).
+   Chrome/Edge/Brave and Android Firefox/Kiwi are supported; iOS is not.
+2. Copy the pairing code from the Connect page into the extension once.
+3. Log in to udemy.com in your own browser (Turnstile passes there), then click
+   the extension's Connect button.
+
+The extension reads the Udemy session cookies in your browser and POSTs them to
+`/connect/token`, authenticated by a signed pairing code (resettable from the
+Connect page). The token is sent in the request body only, never in a URL/log.
+Your Udemy password is never seen by the site.
 
 ### Free plan caveats
 

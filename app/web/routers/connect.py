@@ -1,15 +1,20 @@
-"""Connect a Udemy account with a bookmarklet, for when the app is hosted
-(e.g. on Render) and cannot open a browser window on the server.
+"""Connect a Udemy account via the companion browser extension.
 
-The user signs in to Udemy in their own browser, then clicks a saved bookmark
-that posts their Udemy session token, together with a signed connect code that
-identifies the site user, to /connect/token. The token is sent in the POST body
-only, so it never appears in a URL or an access log.
+Udemy now guards every login with Cloudflare Turnstile, so the sign-in must
+happen in the user's own browser. The extension reads the resulting Udemy
+session cookies in that browser and POSTs them here, authenticated by a signed
+pairing code (not the session cookie, which a cross-site request won't send).
+The token travels in the POST body only - never in a URL or access log.
 """
+import base64
+import io
+import json
 import secrets
+import zipfile
+from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 from ... import config, security
 from ...models import accounts as accounts_model
@@ -19,9 +24,11 @@ from ...services.udemy_login import verify_token
 
 router = APIRouter()
 
+EXTENSION_DIR = config.BASE_DIR / "extension"
+
 
 def _nonce(user_id: int) -> str:
-    """Per-user secret mixed into the connect code so it can be revoked."""
+    """Per-user secret mixed into the pairing code so it can be revoked."""
     key = f"connect_nonce:{user_id}"
     val = settings_model.get_setting(key)
     if not val:
@@ -36,30 +43,36 @@ def _public_origin(request: Request) -> str:
     return f"{request.url.scheme}://{request.headers.get('host', 'localhost')}"
 
 
+def _pairing_code(origin: str, code: str) -> str:
+    raw = json.dumps({"u": origin, "c": code}, separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
 @router.get("/connect")
 def connect_page(request: Request):
     user = require_user(request)
     origin = _public_origin(request)
     code = security.make_connect_code(user["id"], _nonce(user["id"]))
-    endpoint = f"{origin}/connect/token"
-    # The bookmarklet is built server-side so the code/endpoint are baked in.
-    bookmarklet = (
-        "javascript:(function(){"
-        "var m=document.cookie.match(/(?:^|; )access_token=([^;]+)/);"
-        "if(!m){alert('Log in to udemy.com first, then click this on a Udemy tab.');return;}"
-        "var c=document.cookie.match(/(?:^|; )client_id=([^;]+)/);"
-        "var f=document.createElement('form');f.method='POST';f.action="
-        + _js_str(endpoint) + ";f.target='_blank';"
-        "function h(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);}"
-        "h('t',decodeURIComponent(m[1]));h('c',c?decodeURIComponent(c[1]):'');h('code'," + _js_str(code) + ");"
-        "document.body.appendChild(f);f.submit();"
-        "})();"
-    )
     return render(request, "connect.html", {
-        "bookmarklet": bookmarklet, "endpoint": endpoint,
-        "hosted": config.ON_RENDER or bool(config.PUBLIC_URL),
+        "pairing": _pairing_code(origin, code),
+        "origin_host": origin.split("://")[-1],
         "local_login": config.LOCAL_BROWSER_LOGIN,
     })
+
+
+@router.get("/connect/extension.zip")
+def connect_extension_zip(request: Request):
+    require_user(request)
+    if not EXTENSION_DIR.is_dir():
+        return JSONResponse({"error": "Extension files not found on the server."}, status_code=404)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in sorted(EXTENSION_DIR.rglob("*")):
+            if f.is_file():
+                z.write(f, f.relative_to(EXTENSION_DIR).as_posix())
+    buf.seek(0)
+    return Response(buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="udemy-enroller-extension.zip"'})
 
 
 @router.post("/connect/rotate")
@@ -72,26 +85,30 @@ async def connect_rotate(request: Request, csrf_token: str = Form("")):
 
 @router.post("/connect/token")
 async def connect_token(request: Request, t: str = Form(""), c: str = Form(""), code: str = Form("")):
-    """Cross-site target for the bookmarklet. Authenticated by the signed code,
-    not the session cookie (which the browser will not send from udemy.com)."""
-    ip = client_ip(request)
-    if not security.general_limiter.hit(f"connect:{ip}", 30, 3600):
-        return _result(request, False, "Too many attempts. Try again later.")
+    """Target for the extension. Authenticated by the signed pairing code."""
+    wants_json = "application/json" in request.headers.get("accept", "")
+
+    if not security.general_limiter.hit(f"connect:{client_ip(request)}", 30, 3600):
+        return _result(request, wants_json, False, "Too many attempts. Try again later.")
 
     data = security.read_connect_code(code)
     if not data:
-        return _result(request, False, "This connect link is invalid or was reset. Reopen the Connect page and use the fresh bookmark.")
+        return _result(request, wants_json, False,
+                       "This pairing code is invalid or was reset. Copy a fresh one from the Connect page.")
     user_id = data["uid"]
     if data.get("n") != _nonce(user_id):
-        return _result(request, False, "This connect link was revoked. Reopen the Connect page for a new bookmark.")
+        return _result(request, wants_json, False,
+                       "This pairing code was revoked. Copy a fresh one from the Connect page.")
 
     token = (t or "").strip()
     if len(token) < 20:
-        return _result(request, False, "No Udemy login found on that tab. Make sure you're logged in to udemy.com, then click the bookmark there.")
+        return _result(request, wants_json, False,
+                       "No Udemy login found in this browser. Log in to udemy.com, then connect.")
 
     info = verify_token(token, (c or "").strip())
     if not info.get("valid"):
-        return _result(request, False, f"Udemy rejected that login ({info.get('error', 'unknown')}). Log in to udemy.com again and retry.")
+        return _result(request, wants_json, False,
+                       f"Udemy rejected that login ({info.get('error', 'unknown')}). Log in to udemy.com again.")
 
     try:
         accounts_model.upsert_account(
@@ -99,14 +116,14 @@ async def connect_token(request: Request, t: str = Form(""), c: str = Form(""), 
             udemy_user_id=info.get("udemy_user_id"), udemy_name=info.get("name"),
         )
     except ValueError:
-        return _result(request, False, "That Udemy account is already linked to another user here.")
-    return _result(request, True, f"Connected {info.get('name') or 'your Udemy account'}. You can close this tab.")
+        return _result(request, wants_json, False, "That Udemy account is already linked to another user here.")
+    return _result(request, wants_json, True, "Connected", name=info.get("name") or "your Udemy account")
 
 
-def _result(request: Request, ok: bool, message: str):
-    return render(request, "connect_result.html", {"ok": ok, "message": message}, status_code=200 if ok else 400)
-
-
-def _js_str(s: str) -> str:
-    """Safely embed a Python string as a JS string literal inside the bookmarklet."""
-    return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'"
+def _result(request: Request, wants_json: bool, ok: bool, message: str, name: str = ""):
+    if wants_json:
+        payload = {"ok": ok, "name": name} if ok else {"ok": False, "error": message}
+        return JSONResponse(payload, status_code=200 if ok else 400)
+    text = f"Connected {name}. You can close this tab." if ok else message
+    return render(request, "connect_result.html", {"ok": ok, "message": text},
+                  status_code=200 if ok else 400)

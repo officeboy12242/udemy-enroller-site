@@ -1,6 +1,9 @@
 """Server-side Udemy login grab — auto-detects ANY installed browser.
 
 Strategy:
+  0. Direct cookie-DB read (no browser windows at all): decrypt the Udemy
+     session straight out of every browser profile's cookie store — works
+     even while the browser is open.
   1. Enumerate every Chromium-based browser installed for this Windows user
      (Edge, Chrome, Brave, Vivaldi, Opera) and every profile inside each
      (Default, Profile 1, Profile 2, ...).
@@ -31,6 +34,7 @@ import time
 from pathlib import Path
 
 from .. import config
+from . import cookie_reader
 from .udemy_login import verify_token
 
 log = logging.getLogger(__name__)
@@ -163,6 +167,19 @@ def close_edge() -> bool:
         )
         time.sleep(2)
         return not _process_running("msedge.exe")
+    except Exception:
+        return False
+
+
+def close_chrome() -> bool:
+    """Force-close Google Chrome (used by the consented close-and-retry flow)."""
+    try:
+        subprocess.run(
+            ["taskkill", "/IM", "chrome.exe", "/F"],
+            capture_output=True, text=True, timeout=15,
+        )
+        time.sleep(2)
+        return not _process_running("chrome.exe")
     except Exception:
         return False
 
@@ -430,6 +447,43 @@ def _interactive_login(browser: dict, timeout: int) -> dict:
             pass
 
 
+def _try_direct_read(browsers: list[dict]) -> dict | None:
+    """Phase 0 — direct cookie-DB read (no windows, no debugging ports).
+
+    Returns a terminal result (logged_in, or a close_browsers hint when a
+    running browser locks its cookie store) or None to continue the normal
+    flow.
+    """
+    try:
+        direct = cookie_reader.read_udemy_cookies()
+    except Exception as e:
+        log.info("Direct cookie read failed: %s", e)
+        direct = {}
+    if direct.get("access_token"):
+        info = verify_token(direct["access_token"], direct.get("client_id", ""))
+        if info.get("valid"):
+            return {
+                "ok": True, "status": "logged_in",
+                "access_token": direct["access_token"],
+                "client_id": info.get("client_id") or direct.get("client_id", ""),
+                "udemy_user_id": info.get("udemy_user_id"),
+                "name": info.get("name"),
+                "source": direct.get("browser", "browser"),
+            }
+        log.info("Direct read got a token but Udemy rejected it (%s)", info.get("error"))
+    locked = cookie_reader.get_locked_browsers()
+    if locked:
+        names = ", ".join(locked)
+        return {
+            "ok": False, "status": "close_browsers",
+            "message": f"Your Udemy login is inside {names}, which is open right now "
+                       "and keeps its cookies locked. Close it and click Retry — "
+                       "no login needed.",
+            "locked_browsers": locked,
+        }
+    return None
+
+
 def grab_from_browser(timeout: int = 180) -> dict:
     global _last_result
     if browser_busy.is_set():
@@ -447,6 +501,18 @@ def grab_from_browser(timeout: int = 180) -> dict:
             return _last_result
 
         log.info("Detected browsers: %s", ", ".join(b["name"] for b in browsers))
+
+        # Phase 0 — direct cookie-DB read: no windows, no debugging ports.
+        # Decrypts the Udemy session straight out of each browser's cookie
+        # store; nothing is launched, so it works while the browser is open.
+        _last_result = {
+            "ok": False, "status": "scanning",
+            "message": "Checking your browsers for an existing Udemy login…",
+        }
+        direct = _try_direct_read(browsers)
+        if direct:
+            _last_result = direct
+            return direct
 
         # Phase 1 — check every browser + profile for an existing login.
         # Copy each profile, and only launch a browser for the ones that
@@ -500,6 +566,18 @@ def open_login_window(timeout: int = 300) -> dict:
                 "message": "No supported browser found (Edge, Chrome, Brave, Vivaldi, or Opera).",
             }
             return _last_result
+
+        # Phase 0 — direct cookie-DB read: no windows, no debugging ports.
+        # Decrypts the Udemy session straight out of each browser's cookie
+        # store; nothing is launched, so it works while the browser is open.
+        _last_result = {
+            "ok": False, "status": "scanning",
+            "message": "Checking your browsers for an existing Udemy login…",
+        }
+        direct = _try_direct_read(browsers)
+        if direct:
+            _last_result = direct
+            return direct
 
         # Prefer a browser that isn't already running, to avoid launch conflicts.
         ordered = sorted(browsers, key=lambda b: _process_running(b["image"]))

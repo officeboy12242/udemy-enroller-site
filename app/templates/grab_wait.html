@@ -3,14 +3,22 @@
 {% block content %}
 <div class="auth-wrap">
   <div class="auth-card" style="text-align:center">
-    <h1 class="auth-title" id="gw-title">Opening Udemy login...</h1>
+    <h1 class="auth-title" id="gw-title">Checking for your Udemy login...</h1>
     <p class="auth-sub" id="gw-msg">
-      A Udemy login window is opening. Sign in there like normal - including any
-      captcha or OTP. The moment you are logged in, we connect your account
-      automatically. Keep this tab open.
+      We look for an existing Udemy session in your browsers and connect it
+      automatically - no sign-in needed. If none is found, a login window opens.
+      Keep this tab open.
     </p>
     <div class="progress busy" style="margin:18px 0"><span id="gw-bar" style="width:8%"></span></div>
-    <div class="hint" id="gw-status">Waiting for you to finish logging in...</div>
+    <div class="hint" id="gw-status">Scanning your browsers...</div>
+
+    <div id="gw-close" style="display:none;margin-top:20px">
+      <button type="button" class="btn btn-primary" id="gw-close-btn"
+              onclick="location.href='/grab-login?close_browsers=1'">
+        Close locked browser &amp; retry
+      </button>
+      <p class="hint" style="margin-top:8px" id="gw-close-note"></p>
+    </div>
 
     <div id="gw-manual" style="display:none;margin-top:20px;text-align:left">
       <hr class="divider">
@@ -49,6 +57,16 @@ async function poll() {
       statusEl.textContent = (s.name || 'Udemy account') + ' connected - opening dashboard...';
       bar.style.width = '100%';
       setTimeout(function(){ location.href = '/dashboard'; }, 900);
+      return;
+    }
+    if (s.status === 'close_browsers') {
+      title.textContent = 'One quick step';
+      statusEl.textContent = s.message || 'A browser is holding your Udemy cookies locked.';
+      const names = (s.locked_browsers || []).join(', ');
+      document.getElementById('gw-close-note').textContent =
+        names ? ('This will close: ' + names + '. Your open tabs will be listed when you reopen it.') : '';
+      document.getElementById('gw-close').style.display = '';
+      bar.style.width = '100%';
       return;
     }
     if (s.status === 'opening' || s.status === 'waiting_login' || s.status === 'scanning') {

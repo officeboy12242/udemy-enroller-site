@@ -8,15 +8,25 @@ from ... import config, security
 from ...models import accounts as accounts_model
 from ...models import users as users_model
 from ...db import get_db
-from ...services import browser_grab
+from ...services import browser_grab, cookie_reader
 from ..deps import check_csrf, current_user, render, require_user
 
 router = APIRouter()
 
 
 @router.get("/grab-login")
-def grab_login_start(request: Request):
-    """Open a real Udemy login window; the user completes password/captcha/OTP."""
+def grab_login_start(request: Request, close_browsers: str = ""):
+    """One-click connect: first silently read the existing Udemy login from the
+    user's browsers (no windows); if that's blocked by a running browser, the
+    UI offers to close it — /grab-login?close_browsers=1 is the consented retry
+    that force-closes those browsers, then rescans (and falls back to a login
+    window if there is still no session)."""
+    if close_browsers == "1":
+        locked = cookie_reader.get_locked_browsers()
+        if "Microsoft Edge" in locked:
+            browser_grab.close_edge()
+        if "Google Chrome" in locked:
+            browser_grab.close_chrome()
     browser_grab.reset()
     if not browser_grab.browser_busy.is_set():
         threading.Thread(target=browser_grab.open_login_window,
@@ -38,6 +48,10 @@ def grab_status(request: Request):
     udemy_uid = res.get("udemy_user_id")
     udemy_name = res.get("name")
     existing = current_user(request)
+
+    if res.get("status") == "close_browsers":
+        return {"status": "close_browsers", "message": res.get("message", ""),
+                "locked_browsers": res.get("locked_browsers", [])}
 
     if existing:
         try:
