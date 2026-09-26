@@ -1,35 +1,36 @@
-"""User accounts on this site (not Udemy accounts)."""
+"""Site user accounts (not Udemy accounts). MongoDB-backed."""
 from .. import config, security
-from ..db import get_db, db_lock, now_iso
+from ..db import get_db, next_id, now_iso, with_id
 
 
-def create_user(email: str, password: str, is_admin: bool = False) -> int:
-    lock = db_lock()
-    with lock:
-        db = get_db()
-        cur = db.execute(
-            "INSERT INTO users (email, password_hash, is_admin, created_at) VALUES (?,?,?,?)",
-            (email.strip().lower(), security.hash_password(password), int(is_admin), now_iso()),
-        )
-        db.commit()
-        uid = cur.lastrowid
-        db.execute(
-            "INSERT OR IGNORE INTO auto_state (user_id, enabled) VALUES (?,?)",
-            (uid, int(config.AUTO_ENROLL_ENABLED_DEFAULT)),
-        )
-        db.commit()
+def create_user(email: str, password: str, is_admin: bool = False,
+                password_hash: str | None = None) -> int:
+    db = get_db()
+    uid = next_id("users")
+    db.users.insert_one({
+        "_id": uid,
+        "email": email.strip().lower(),
+        "password_hash": password_hash if password_hash is not None else security.hash_password(password),
+        "is_admin": int(is_admin),
+        "created_at": now_iso(),
+    })
+    db.auto_state.update_one(
+        {"_id": uid},
+        {"$setOnInsert": {"enabled": int(config.AUTO_ENROLL_ENABLED_DEFAULT), "running": 0,
+                          "last_run": None, "next_run": None, "last_result": None,
+                          "total_enrolled": 0, "updated_at": None}},
+        upsert=True,
+    )
     return uid
 
 
 def get_user_by_email(email: str):
-    row = get_db().execute("SELECT * FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()
-    return dict(row) if row else None
+    return with_id(get_db().users.find_one({"email": email.strip().lower()}))
 
 
 def get_user(user_id: int):
-    row = get_db().execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    return dict(row) if row else None
+    return with_id(get_db().users.find_one({"_id": user_id}))
 
 
 def count_users() -> int:
-    return get_db().execute("SELECT COUNT(*) c FROM users").fetchone()["c"]
+    return get_db().users.count_documents({})

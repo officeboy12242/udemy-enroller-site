@@ -66,9 +66,8 @@ def grab_status(request: Request):
         return JSONResponse({"status": "linked", "name": udemy_name, "source": res.get("source", "")})
 
     # No site session: sign in / create a site user keyed to this Udemy identity.
-    row = get_db().execute(
-        "SELECT user_id FROM accounts WHERE udemy_user_id=?", (udemy_uid,)
-    ).fetchone() if udemy_uid is not None else None
+    row = get_db().accounts.find_one({"udemy_user_id": udemy_uid}, {"user_id": 1}) \
+        if udemy_uid is not None else None
     if row:
         user_id = row["user_id"]
     else:

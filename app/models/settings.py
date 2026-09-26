@@ -1,18 +1,11 @@
-"""Global key/value settings."""
-from ..db import get_db, db_lock
+"""Global key/value settings. MongoDB-backed."""
+from ..db import get_db
 
 
 def get_setting(key: str, default=None):
-    row = get_db().execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
-    return row["value"] if row else default
+    doc = get_db().settings.find_one({"_id": key})
+    return doc["value"] if doc else default
 
 
 def set_setting(key: str, value: str) -> None:
-    with db_lock():
-        db = get_db()
-        db.execute(
-            "INSERT INTO settings (key, value) VALUES (?,?) "
-            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (key, str(value)),
-        )
-        db.commit()
+    get_db().settings.update_one({"_id": key}, {"$set": {"value": str(value)}}, upsert=True)

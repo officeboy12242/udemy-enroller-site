@@ -16,6 +16,7 @@ templates.env.globals["cat_icon"] = cat_icon
 # Where the "Connect account" buttons should point: the local browser-window
 # flow when running on the user's own PC, or the bookmarklet page when hosted.
 templates.env.globals["connect_url"] = "/grab-login" if config.LOCAL_BROWSER_LOGIN else "/connect"
+templates.env.globals["google_enabled"] = config.GOOGLE_ENABLED
 
 
 class RequireLogin(Exception):

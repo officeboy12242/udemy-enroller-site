@@ -3,9 +3,7 @@
 Empty language/category lists mean "any". Shared by manual Enroll Now and the
 background auto-enroll engine so both always honour the same rules.
 """
-import json
-
-from ..db import get_db, db_lock, now_iso
+from ..db import get_db, now_iso
 
 # Udemy's own top-level categories, in the order udemy.com lists them.
 UDEMY_CATEGORIES = [
@@ -26,21 +24,13 @@ RATING_STEPS = [0.0, 3.5, 4.0, 4.5]
 _DEFAULT = {"languages": [], "categories": [], "min_rating": 0.0, "include_unrated": True}
 
 
-def _load_list(raw) -> list[str]:
-    try:
-        val = json.loads(raw or "[]")
-        return [str(v) for v in val if v] if isinstance(val, list) else []
-    except (TypeError, ValueError):
-        return []
-
-
-def _row_to_prefs(row, scope: str) -> dict:
+def _doc_to_prefs(doc, scope: str) -> dict:
     return {
-        "languages": _load_list(row["languages"]),
-        "categories": _load_list(row["categories"]),
-        "min_rating": float(row["min_rating"] or 0),
-        "include_unrated": bool(row["include_unrated"]),
-        "updated_at": row["updated_at"],
+        "languages": [str(v) for v in (doc.get("languages") or []) if v],
+        "categories": [str(v) for v in (doc.get("categories") or []) if v],
+        "min_rating": float(doc.get("min_rating") or 0),
+        "include_unrated": bool(doc.get("include_unrated")),
+        "updated_at": doc.get("updated_at"),
         "scope": scope,
     }
 
@@ -49,53 +39,35 @@ def get_prefs(user_id: int, account_id: int | None = None) -> dict:
     """Filters for one account (its own override if set) or the user's default."""
     db = get_db()
     if account_id is not None:
-        row = db.execute("SELECT * FROM account_prefs WHERE account_id=? AND user_id=?",
-                         (account_id, user_id)).fetchone()
-        if row:
-            return _row_to_prefs(row, "account")
-    row = db.execute("SELECT * FROM enroll_prefs WHERE user_id=?", (user_id,)).fetchone()
-    if row:
-        return _row_to_prefs(row, "default")
+        doc = db.account_prefs.find_one({"_id": account_id, "user_id": user_id})
+        if doc:
+            return _doc_to_prefs(doc, "account")
+    doc = db.enroll_prefs.find_one({"_id": user_id})
+    if doc:
+        return _doc_to_prefs(doc, "default")
     return dict(_DEFAULT, languages=[], categories=[], updated_at=None, scope="default")
 
 
 def accounts_with_override(user_id: int) -> set[int]:
-    return {r["account_id"] for r in get_db().execute(
-        "SELECT account_id FROM account_prefs WHERE user_id=?", (user_id,)).fetchall()}
+    return {d["_id"] for d in get_db().account_prefs.find({"user_id": user_id}, {"_id": 1})}
 
 
 def save_prefs(user_id: int, languages: list[str], categories: list[str],
                min_rating: float, include_unrated: bool, account_id: int | None = None) -> None:
     min_rating = min(RATING_STEPS, key=lambda s: abs(s - float(min_rating or 0)))
-    vals = (json.dumps(sorted(set(languages))), json.dumps(sorted(set(categories))),
-            min_rating, int(include_unrated), now_iso())
-    with db_lock():
-        db = get_db()
-        if account_id is None:
-            db.execute(
-                """INSERT INTO enroll_prefs (user_id, languages, categories, min_rating, include_unrated, updated_at)
-                   VALUES (?,?,?,?,?,?)
-                   ON CONFLICT(user_id) DO UPDATE SET languages=excluded.languages,
-                     categories=excluded.categories, min_rating=excluded.min_rating,
-                     include_unrated=excluded.include_unrated, updated_at=excluded.updated_at""",
-                (user_id, *vals))
-        else:
-            db.execute(
-                """INSERT INTO account_prefs (account_id, user_id, languages, categories, min_rating,
-                     include_unrated, updated_at) VALUES (?,?,?,?,?,?,?)
-                   ON CONFLICT(account_id) DO UPDATE SET languages=excluded.languages,
-                     categories=excluded.categories, min_rating=excluded.min_rating,
-                     include_unrated=excluded.include_unrated, updated_at=excluded.updated_at""",
-                (account_id, user_id, *vals))
-        db.commit()
+    fields = {
+        "user_id": user_id,
+        "languages": sorted(set(languages)), "categories": sorted(set(categories)),
+        "min_rating": min_rating, "include_unrated": int(include_unrated), "updated_at": now_iso(),
+    }
+    coll = get_db().enroll_prefs if account_id is None else get_db().account_prefs
+    key = user_id if account_id is None else account_id
+    coll.update_one({"_id": key}, {"$set": fields}, upsert=True)
 
 
 def clear_account_prefs(user_id: int, account_id: int) -> None:
     """Make an account follow the default filters again."""
-    with db_lock():
-        db = get_db()
-        db.execute("DELETE FROM account_prefs WHERE account_id=? AND user_id=?", (account_id, user_id))
-        db.commit()
+    get_db().account_prefs.delete_one({"_id": account_id, "user_id": user_id})
 
 
 def is_active(prefs: dict) -> bool:

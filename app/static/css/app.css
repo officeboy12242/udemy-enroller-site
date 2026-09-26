@@ -480,6 +480,10 @@ body.no-nav .main { max-width: none; display: flex; align-items: center; justify
 .auth-title { font-size: 23px; text-align: center; }
 .auth-sub { color: var(--muted); margin: 4px 0 22px; text-align: center; font-size: 14px; }
 .auth-foot { margin-top: 20px; text-align: center; color: var(--muted); font-size: 13.5px; }
+.or-divider { display: flex; align-items: center; gap: 12px; margin: 16px 0; color: var(--faint); font-size: 12px; }
+.or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.gbtn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 11px 16px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink); font-weight: 600; font-size: 14.5px; transition: background .15s, border-color .15s; }
+.gbtn:hover { background: var(--surface-2); border-color: var(--muted); color: var(--ink); }
 
 /* ── Empty state ──────────────────────────────────────────────────────── */
 .empty { text-align: center; padding: 44px 20px; color: var(--muted); }

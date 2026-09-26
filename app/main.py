@@ -24,7 +24,8 @@ from . import config
 from .db import get_db
 from .services import enroll_service
 from .web.deps import RequireLogin
-from .web.routers import accounts, auth, connect, dashboard, enroll, filters, pages
+from .web.routers import (accounts, auth, auth_google, connect, dashboard,
+                          enroll, filters, pages)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("main")
@@ -64,7 +65,7 @@ def _keepalive_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    get_db()  # initialize schema + migrations before serving
+    get_db()  # connect to MongoDB + ensure indexes before serving
     threading.Thread(target=_engine_loop, name="auto-enroll-engine", daemon=True).start()
     if config.KEEPALIVE_INTERVAL and config.PUBLIC_URL:
         threading.Thread(target=_keepalive_loop, name="keepalive", daemon=True).start()
@@ -96,6 +97,6 @@ async def _require_login_handler(request: Request, exc: RequireLogin):
     return RedirectResponse("/login", status_code=303)
 
 
-for r in (auth.router, dashboard.router, accounts.router, connect.router,
+for r in (auth.router, auth_google.router, dashboard.router, accounts.router, connect.router,
           enroll.router, filters.router, pages.router):
     app.include_router(r)

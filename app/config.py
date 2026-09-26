@@ -55,6 +55,15 @@ FEED_CACHE_TTL = int(os.getenv("FEED_CACHE_TTL", "900"))               # seconds
 # Stop paging the feed once listings are older than this - their coupons are dead.
 FEED_MAX_AGE_HOURS = int(os.getenv("FEED_MAX_AGE_HOURS", "96"))
 
+# ── Database (MongoDB) ────────────────────────────────────────────────────────
+MONGODB_URI = os.getenv("MONGODB_URI", "")
+MONGODB_DB = os.getenv("MONGODB_DB", "udemy_enroller_site")
+
+# ── Google sign-in (optional) ─────────────────────────────────────────────────
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
 # ── Server ──────────────────────────────────────────────────────────────────
 PORT = int(os.getenv("PORT", "8123"))
 

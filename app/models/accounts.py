@@ -1,10 +1,10 @@
-"""Linked Udemy accounts (access tokens encrypted at rest)."""
+"""Linked Udemy accounts (access tokens encrypted at rest). MongoDB-backed."""
 from .. import security
-from ..db import get_db, db_lock, now_iso
+from ..db import get_db, next_id, now_iso, with_id
 
 
-def _row_with_token(row) -> dict:
-    d = dict(row)
+def _row_with_token(doc) -> dict:
+    d = with_id(doc)
     try:
         d["access_token"] = security.decrypt_secret(d.pop("access_token_enc"))
     except Exception:
@@ -15,91 +15,76 @@ def _row_with_token(row) -> dict:
 
 def upsert_account(user_id: int, access_token: str, client_id: str,
                    udemy_user_id: int | None, udemy_name: str | None) -> int:
-    """Create or refresh the account record for this Udemy identity. Returns account id."""
     now = now_iso()
     enc = security.encrypt_secret(access_token)
-    with db_lock():
-        db = get_db()
-        row = db.execute(
-            "SELECT id FROM accounts WHERE user_id=? AND udemy_user_id=?",
-            (user_id, udemy_user_id),
-        ).fetchone() if udemy_user_id is not None else None
-        if row:
-            db.execute(
-                "UPDATE accounts SET access_token_enc=?, client_id=?, udemy_name=?, is_active=1, updated_at=? WHERE id=?",
-                (enc, client_id, udemy_name, now, row["id"]),
-            )
-            acc_id = row["id"]
-        else:
-            dup = db.execute(
-                "SELECT user_id FROM accounts WHERE udemy_user_id=? AND user_id<>?",
-                (udemy_user_id, user_id),
-            ).fetchone() if udemy_user_id is not None else None
-            if dup:
-                raise ValueError("This Udemy account is already linked to another site user.")
-            cur = db.execute(
-                """INSERT INTO accounts
-                   (user_id, udemy_user_id, udemy_name, access_token_enc, client_id, created_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?)""",
-                (user_id, udemy_user_id, udemy_name, enc, client_id, now, now),
-            )
-            acc_id = cur.lastrowid
-        db.commit()
+    db = get_db()
+    existing = db.accounts.find_one({"user_id": user_id, "udemy_user_id": udemy_user_id}) \
+        if udemy_user_id is not None else None
+    if existing:
+        db.accounts.update_one({"_id": existing["_id"]}, {"$set": {
+            "access_token_enc": enc, "client_id": client_id, "udemy_name": udemy_name,
+            "is_active": 1, "updated_at": now,
+        }})
+        return existing["_id"]
+
+    if udemy_user_id is not None:
+        dup = db.accounts.find_one({"udemy_user_id": udemy_user_id, "user_id": {"$ne": user_id}})
+        if dup:
+            raise ValueError("This Udemy account is already linked to another site user.")
+
+    acc_id = next_id("accounts")
+    db.accounts.insert_one({
+        "_id": acc_id, "user_id": user_id, "udemy_user_id": udemy_user_id,
+        "udemy_name": udemy_name, "access_token_enc": enc, "client_id": client_id,
+        "is_active": 1, "auto_enroll": 1, "total_courses": None,
+        "total_courses_updated_at": None, "created_at": now, "updated_at": now,
+    })
     return acc_id
 
 
 def get_accounts(user_id: int, active_only: bool = False) -> list[dict]:
-    q = "SELECT * FROM accounts WHERE user_id=?"
+    q = {"user_id": user_id}
     if active_only:
-        q += " AND is_active=1"
-    q += " ORDER BY id"
-    return [_row_with_token(r) for r in get_db().execute(q, (user_id,)).fetchall()]
+        q["is_active"] = 1
+    return [_row_with_token(d) for d in get_db().accounts.find(q).sort("_id", 1)]
 
 
 def get_account_by_id(account_id: int) -> dict | None:
-    r = get_db().execute("SELECT * FROM accounts WHERE id=?", (account_id,)).fetchone()
-    return _row_with_token(r) if r else None
+    d = get_db().accounts.find_one({"_id": account_id})
+    return _row_with_token(d) if d else None
 
 
 def get_all_active_auto_accounts() -> list[dict]:
-    rows = get_db().execute(
-        "SELECT a.*, u.email AS site_email FROM accounts a JOIN users u ON u.id=a.user_id "
-        "WHERE a.is_active=1 AND a.auto_enroll=1 ORDER BY a.id"
-    ).fetchall()
-    return [_row_with_token(r) for r in rows]
+    db = get_db()
+    out = []
+    for d in db.accounts.find({"is_active": 1, "auto_enroll": 1}).sort("_id", 1):
+        row = _row_with_token(d)
+        u = db.users.find_one({"_id": d["user_id"]}, {"email": 1})
+        row["site_email"] = u["email"] if u else None
+        out.append(row)
+    return out
 
 
 def set_account_flags(account_id: int, is_active: bool = None, auto_enroll: bool = None) -> None:
-    sets, vals = [], []
+    sets = {}
     if is_active is not None:
-        sets.append("is_active=?"); vals.append(int(is_active))
+        sets["is_active"] = int(is_active)
     if auto_enroll is not None:
-        sets.append("auto_enroll=?"); vals.append(int(auto_enroll))
+        sets["auto_enroll"] = int(auto_enroll)
     if not sets:
         return
-    sets.append("updated_at=?"); vals.append(now_iso()); vals.append(account_id)
-    with db_lock():
-        db = get_db()
-        db.execute(f"UPDATE accounts SET {', '.join(sets)} WHERE id=?", vals)
-        db.commit()
+    sets["updated_at"] = now_iso()
+    get_db().accounts.update_one({"_id": account_id}, {"$set": sets})
 
 
 def set_account_total_courses(account_id: int, count: int) -> None:
-    """Cache the Udemy account's real course-library size (all courses in the
-    account, not just ones enrolled through this app). Refreshed opportunistically
-    during auto/manual enroll runs - never fetched live on a page load."""
-    with db_lock():
-        db = get_db()
-        db.execute(
-            "UPDATE accounts SET total_courses=?, total_courses_updated_at=? WHERE id=?",
-            (count, now_iso(), account_id),
-        )
-        db.commit()
+    get_db().accounts.update_one({"_id": account_id}, {"$set": {
+        "total_courses": count, "total_courses_updated_at": now_iso(),
+    }})
 
 
 def delete_account(account_id: int, user_id: int) -> bool:
-    with db_lock():
-        db = get_db()
-        cur = db.execute("DELETE FROM accounts WHERE id=? AND user_id=?", (account_id, user_id))
-        db.commit()
-    return cur.rowcount > 0
+    res = get_db().accounts.delete_one({"_id": account_id, "user_id": user_id})
+    if res.deleted_count:
+        get_db().account_prefs.delete_one({"_id": account_id})
+    return res.deleted_count > 0
