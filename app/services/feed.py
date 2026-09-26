@@ -113,7 +113,9 @@ def _get_page(session, entry: dict, page: int) -> list | None:
     params = dict(entry["params"], page=page)
     for attempt in range(2):
         try:
-            r = session.get(entry["url"], params=params, timeout=20)
+            # Upstream throttles concurrent clients: one page ~7s is fine, but
+            # a burst of 6 often times out. Keep this generous for slow pages.
+            r = session.get(entry["url"], params=params, timeout=45)
             r.raise_for_status()
             return r.json().get("items", [])
         except Exception as e:
@@ -121,14 +123,14 @@ def _get_page(session, entry: dict, page: int) -> list | None:
     return None
 
 
-def _fetch_upstream(entry: dict, max_pages: int = 40, parallel: int = 6) -> list[CourseOffer]:
+def _fetch_upstream(entry: dict, max_pages: int = 40, parallel: int = 2) -> list[CourseOffer]:
     """Collect every live 100%-off offer the upstream has.
 
     There is no cap on the number of courses. Paging stops only when the
     upstream runs out, or when listings get older than any coupon can still
     be valid (FEED_MAX_AGE_HOURS) - past that point everything would just be
-    rejected as expired. Pages are fetched in parallel batches because the
-    upstream is slow (~5-10s per page). max_pages is only a runaway guard.
+    rejected as expired. Pages are fetched in small parallel batches (the
+    upstream throttles larger bursts). max_pages is only a runaway guard.
     """
     offers: list[CourseOffer] = []
     seen: set[str] = set()
