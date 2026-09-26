@@ -63,20 +63,18 @@ A `render.yaml` blueprint is included. Deploy from a Git repo:
 The "open a Udemy login window" flow only works when the app runs on your own
 PC (it drives a real browser on the host machine). Udemy also guards every
 login (password and passwordless) with Cloudflare Turnstile, so a server can't
-log in on your behalf. When hosted, the Connect buttons therefore point to
-`/connect`, which uses a small **browser extension** (in `extension/`):
+log in on your behalf. When hosted, the Connect buttons point to `/connect`,
+a **guided token paste** flow (no install):
 
-1. Download it from the Connect page (`/connect/extension.zip`), unzip, and
-   load it unpacked (`chrome://extensions` → Developer mode → Load unpacked).
-   Chrome/Edge/Brave and Android Firefox/Kiwi are supported; iOS is not.
-2. Copy the pairing code from the Connect page into the extension once.
-3. Log in to udemy.com in your own browser (Turnstile passes there), then click
-   the extension's Connect button.
+1. Log in to udemy.com in your browser (Turnstile passes there as normal).
+2. F12 → Application/Storage → Cookies → `https://www.udemy.com` → copy the
+   `access_token` value. The Connect page shows these steps per browser.
+3. Paste it on `/connect`; the app validates it and connects the account.
 
-The extension reads the Udemy session cookies in your browser and POSTs them to
-`/connect/token`, authenticated by a signed pairing code (resettable from the
-Connect page). The token is sent in the request body only, never in a URL/log.
-Your Udemy password is never seen by the site.
+The token is submitted same-origin (session + CSRF protected), validated with
+`verify_token`, and stored encrypted; it never appears in a URL. Your Udemy
+password is never seen by the site. Phone browsers can't open the cookie view,
+so connect once from a computer, then run/monitor from your phone.
 
 ### Free plan caveats
 

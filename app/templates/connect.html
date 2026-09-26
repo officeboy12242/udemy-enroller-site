@@ -3,77 +3,130 @@
 {% block page_title %}Connect account{% endblock %}
 {% block content %}
 
-<div class="card card-pad-lg" style="max-width:780px;margin-bottom:16px">
-  <h2 style="margin:0 0 4px">Connect your Udemy account</h2>
-  <div class="sub" style="margin-bottom:18px">
-    A one-time setup with our browser extension. After that, connecting any Udemy account is a single click - you handle login (and any code/checks) in your own browser, exactly like normal.
+<div class="connect-wrap">
+  <div class="card card-pad-lg">
+    <div class="connect-head">
+      <span class="connect-badge"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 2 2 7l10 5 10-5-10-5Zm0 7.2L4.9 6 12 4.3 19.1 6 12 9.2ZM4 10.5v4.2c0 1.9 3.6 3.8 8 3.8s8-1.9 8-3.8v-4.2l-8 4-8-4Z"/></svg></span>
+      <div>
+        <h2 style="margin:0">Connect your Udemy account</h2>
+        <div class="sub">Paste your Udemy <code>access_token</code>. No install, nothing to solve - you stay logged in on Udemy as normal.</div>
+      </div>
+    </div>
+
+    <details class="how" open>
+      <summary>How to copy your access_token <span class="chev">&#9662;</span></summary>
+      <div class="how-body">
+        <div class="how-tabs" role="tablist">
+          <button type="button" class="how-tab on" data-tab="chrome">Chrome / Edge / Brave</button>
+          <button type="button" class="how-tab" data-tab="firefox">Firefox</button>
+        </div>
+        <ol class="how-steps" id="how-chrome">
+          <li>Open <a href="https://www.udemy.com" target="_blank" rel="noopener">udemy.com</a> and make sure you're logged in.</li>
+          <li>Press <b>F12</b> (or right-click &rarr; Inspect) to open developer tools.</li>
+          <li>Go to the <b>Application</b> tab &rarr; left side <b>Cookies</b> &rarr; <b>https://www.udemy.com</b>.</li>
+          <li>Click the <b>access_token</b> row, double-click its <b>Value</b>, and copy it (Ctrl+C).</li>
+          <li>Paste it below and press Connect.</li>
+        </ol>
+        <ol class="how-steps" id="how-firefox" style="display:none">
+          <li>Open <a href="https://www.udemy.com" target="_blank" rel="noopener">udemy.com</a> and make sure you're logged in.</li>
+          <li>Press <b>F12</b> &rarr; <b>Storage</b> tab &rarr; <b>Cookies</b> &rarr; <b>https://www.udemy.com</b>.</li>
+          <li>Find <b>access_token</b>, copy its value.</li>
+          <li>Paste it below and press Connect.</li>
+        </ol>
+      </div>
+    </details>
+
+    <div class="form-error" id="c-error" style="display:none"></div>
+    <div class="form-ok" id="c-ok" style="display:none"></div>
+
+    <form id="connect-form" autocomplete="off" style="margin-top:14px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field">
+        <label class="label" for="c-token">access_token</label>
+        <textarea class="input" id="c-token" name="access_token" rows="3" required
+                  placeholder="Paste the access_token value here" spellcheck="false" style="font-family:ui-monospace,Consolas,monospace;font-size:12.5px"></textarea>
+      </div>
+      <details class="adv">
+        <summary>Add client_id (optional)</summary>
+        <div class="field" style="margin-top:10px">
+          <input class="input" id="c-client" name="client_id" placeholder="client_id (only if asked)"
+                 style="font-family:ui-monospace,Consolas,monospace;font-size:12.5px">
+          <div class="hint">Usually not needed - we detect it from the token.</div>
+        </div>
+      </details>
+      <button class="btn btn-primary btn-block btn-lg" type="submit" id="c-submit">Connect account</button>
+    </form>
+
+    <p class="hint" style="margin-top:12px;display:flex;gap:7px;align-items:flex-start">
+      <svg viewBox="0 0 24 24" width="15" height="15" style="flex:none;margin-top:1px;color:var(--teal-600)"><path fill="currentColor" d="M12 1 3 5v6c0 5 3.8 9.7 9 11 5.2-1.3 9-6 9-11V5l-9-4Zm-1 15-4-4 1.4-1.4L11 13.2l4.6-4.6L17 10l-6 6Z"/></svg>
+      Your password is never involved. The token is stored encrypted and only used to enroll you.
+    </p>
   </div>
 
-  <ol class="steps">
-    <li>
-      <span class="step-n">1</span>
-      <div style="flex:1">
-        <b>Install the extension</b>
-        <div class="hint" style="margin:4px 0 10px">Download it, unzip, then in Chrome/Edge open <code>chrome://extensions</code>, turn on <b>Developer mode</b>, and click <b>Load unpacked</b> on the unzipped folder. (Firefox/Kiwi on Android also work.)</div>
-        <a class="btn btn-primary btn-sm" href="/connect/extension.zip">&#8681; Download extension</a>
-      </div>
-    </li>
-    <li>
-      <span class="step-n">2</span>
-      <div style="flex:1">
-        <b>Pair it with this site</b>
-        <div class="hint" style="margin:4px 0 8px">Copy this pairing code and paste it into the extension once. It ties the extension to your account here.</div>
-        <div class="pair-box">
-          <input class="input" id="pair-code" readonly value="{{ pairing }}">
-          <button type="button" class="btn btn-ghost btn-sm" id="copy-pair">Copy</button>
-        </div>
-        <div class="hint" style="margin-top:6px">Site: <b>{{ origin_host }}</b></div>
-      </div>
-    </li>
-    <li>
-      <span class="step-n">3</span>
-      <div style="flex:1">
-        <b>Log in to <a href="https://www.udemy.com" target="_blank" rel="noopener">udemy.com</a>, then click the extension</b>
-        <div class="hint" style="margin-top:4px">Use the account you want to auto-enroll. Click the extension's <b>Connect</b> button - done. Repeat for each account.</div>
-      </div>
-    </li>
-  </ol>
-</div>
+  {% if local_login %}
+  <div class="card" style="margin-top:14px">
+    <p class="hint" style="margin:0">On this computer you can skip the copy step and
+      <a href="/grab-login">connect through a Udemy login window</a> instead.</p>
+  </div>
+  {% endif %}
 
-<div class="card" style="max-width:780px">
-  <div class="card-head" style="margin-bottom:6px"><div><h2 style="margin:0">Security</h2></div></div>
-  <p class="hint" style="margin:0 0 12px">
-    The pairing code is a private token tied to your account. Your Udemy password is never seen by this site - only the session the extension reads from your logged-in browser. If you ever shared the code, reset it here and re-pair the extension.
-  </p>
-  <form method="post" action="/connect/rotate" onsubmit="return confirm('Reset the pairing code? The extension will need to be paired again.')">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button class="btn btn-ghost btn-sm" type="submit">Reset pairing code</button>
-  </form>
+  <div class="card" style="margin-top:14px">
+    <p class="hint" style="margin:0">&#128241; <b>On a phone?</b> Phone browsers can't open the cookie view, so connect once from a computer - after that you can run and watch everything from your phone.</p>
+  </div>
 </div>
-
-{% if local_login %}
-<div class="card" style="max-width:780px;margin-top:16px">
-  <p class="hint" style="margin:0">On this computer you can also
-    <a href="/grab-login">connect through a Udemy login window</a> without the extension.</p>
-</div>
-{% endif %}
 
 <style>
-.steps { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:22px; }
-.steps li { display:flex; gap:14px; align-items:flex-start; }
-.step-n { width:30px; height:30px; flex:none; border-radius:50%; background:var(--primary-600); color:#fff; font-weight:800; display:inline-flex; align-items:center; justify-content:center; font-size:14px; }
-.steps code { background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:1px 6px; font-size:12px; }
-.pair-box { display:flex; gap:8px; }
-.pair-box .input { font-family:ui-monospace,Consolas,monospace; font-size:12px; }
+.connect-wrap { max-width: 560px; }
+.connect-head { display:flex; gap:14px; align-items:flex-start; margin-bottom:18px; }
+.connect-badge { width:46px; height:46px; border-radius:13px; flex:none; display:inline-flex; align-items:center; justify-content:center; background:linear-gradient(135deg,var(--primary),var(--primary-700)); color:#fff; box-shadow:var(--shadow-md); }
+.connect-head code { background:var(--surface-2); border:1px solid var(--border); border-radius:5px; padding:1px 5px; font-size:12px; }
+.how { border:1px solid var(--border); border-radius:12px; background:var(--surface-2); overflow:hidden; }
+.how > summary { list-style:none; cursor:pointer; padding:12px 15px; font-weight:700; font-size:13.5px; color:var(--ink); display:flex; justify-content:space-between; align-items:center; }
+.how > summary::-webkit-details-marker { display:none; }
+.how[open] .chev { transform:rotate(180deg); }
+.chev { transition:transform .2s; color:var(--muted); }
+.how-body { padding:0 15px 15px; }
+.how-tabs { display:flex; gap:6px; margin-bottom:10px; }
+.how-tab { border:1px solid var(--border-strong); background:var(--surface); border-radius:8px; padding:6px 12px; font:inherit; font-size:12.5px; font-weight:600; color:var(--muted); cursor:pointer; }
+.how-tab.on { background:var(--primary-050); border-color:var(--primary); color:var(--primary-600); }
+.how-steps { margin:0; padding-left:20px; font-size:13px; color:var(--text); line-height:1.7; }
+.how-steps code, .how-steps b { color:var(--ink); }
+.adv { margin-bottom:12px; }
+.adv > summary { cursor:pointer; font-size:12.5px; color:var(--primary-600); font-weight:600; }
 </style>
 <script>
-document.getElementById("copy-pair").addEventListener("click", function () {
-  var el = document.getElementById("pair-code");
-  el.select();
-  navigator.clipboard.writeText(el.value).then(
-    function () { window.toast("Pairing code copied.", "ok"); },
-    function () { document.execCommand("copy"); window.toast("Pairing code copied.", "ok"); }
-  );
-});
+(function () {
+  document.querySelectorAll(".how-tab").forEach(function (t) {
+    t.addEventListener("click", function () {
+      document.querySelectorAll(".how-tab").forEach(function (x) { x.classList.remove("on"); });
+      t.classList.add("on");
+      document.getElementById("how-chrome").style.display = t.dataset.tab === "chrome" ? "" : "none";
+      document.getElementById("how-firefox").style.display = t.dataset.tab === "firefox" ? "" : "none";
+    });
+  });
+
+  var form = document.getElementById("connect-form");
+  var err = document.getElementById("c-error"), ok = document.getElementById("c-ok"), btn = document.getElementById("c-submit");
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    err.style.display = "none"; ok.style.display = "none";
+    btn.disabled = true; btn.textContent = "Checking token...";
+    var data = {
+      csrf_token: form.querySelector('[name=csrf_token]').value,
+      access_token: document.getElementById("c-token").value,
+      client_id: document.getElementById("c-client").value,
+    };
+    var res = await window.postForm("/connect/paste", data);
+    if (res.json && res.json.ok) {
+      ok.textContent = "Connected " + (res.json.name || "your Udemy account") + " - opening dashboard...";
+      ok.style.display = ""; window.toast("Udemy account connected!", "ok");
+      setTimeout(function () { location.href = "/dashboard"; }, 1000);
+      return;
+    }
+    err.textContent = (res.json && res.json.error) || "Could not connect. Try again.";
+    err.style.display = "";
+    btn.disabled = false; btn.textContent = "Connect account";
+  });
+})();
 </script>
 {% endblock %}
