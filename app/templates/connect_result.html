@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Connected' if ok else 'Connect failed' }} - {{ app_name }}{% endblock %}
+{% block page_title %}Connect account{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card" style="text-align:center">
+    <div class="result-mark {{ 'ok' if ok else 'bad' }}">{{ '✓' if ok else '!' }}</div>
+    <h1 class="auth-title">{{ 'Account connected' if ok else 'Could not connect' }}</h1>
+    <p class="auth-sub">{{ message }}</p>
+    <a href="/dashboard" class="btn btn-primary btn-block">Go to dashboard</a>
+    {% if not ok %}<a href="/connect" class="btn btn-ghost btn-block" style="margin-top:10px">Back to connect steps</a>{% endif %}
+  </div>
+</div>
+<style>
+.result-mark { width:64px; height:64px; border-radius:50%; margin:0 auto 16px; display:flex; align-items:center; justify-content:center; font-size:32px; font-weight:800; color:#fff; }
+.result-mark.ok { background:var(--success); }
+.result-mark.bad { background:var(--danger); }
+</style>
+{% endblock %}

@@ -1,50 +1,69 @@
 {% extends "base.html" %}
-{% block title %}My courses — {{ app_name }}{% endblock %}
+{% block title %}My Courses - {{ app_name }}{% endblock %}
+{% block page_title %}My Courses{% endblock %}
 {% block content %}
-<h1 class="ud-page-title">My courses</h1>
-<p class="ud-page-sub">Search the library of your linked Udemy account(s).</p>
+<p class="hint" style="margin-top:0">Search or browse the libraries of your connected Udemy accounts.</p>
 
-<form method="get" action="/my-courses" class="ud-actions-row" style="margin-bottom:22px">
-  <input class="ud-input" style="max-width:420px" type="search" name="q" value="{{ q }}"
-         placeholder="Search your enrolled courses…">
-  <select class="ud-input" style="max-width:220px" name="account_id">
-    <option value="0">All accounts</option>
-    {% for acc in accounts %}
-    <option value="{{ acc.id }}" {% if account_id == acc.id %}selected{% endif %}>
-      {{ acc.udemy_name or 'Udemy account' }}
-    </option>
-    {% endfor %}
-  </select>
-  <button class="ud-btn ud-btn-primary" type="submit">Search</button>
-</form>
+{% if not accounts %}
+<div class="card">
+  <div class="empty">
+    <div class="big">&#128273;</div>
+    <p>Connect a Udemy account to browse and search its courses here.</p>
+    <a href="/dashboard" class="btn btn-primary">Go to dashboard</a>
+  </div>
+</div>
+{% else %}
+<div class="card card-pad-lg" style="margin-bottom:16px">
+  <form method="get" action="/my-courses">
+    <input type="hidden" name="go" value="1">
+    <div class="field" style="margin-bottom:14px">
+      <label class="label">Account</label>
+      <div class="chip-picker">
+        <input type="radio" id="acc-0" name="account_id" value="0" {% if not account_id %}checked{% endif %} onchange="this.form.requestSubmit()">
+        <label for="acc-0">All accounts</label>
+        {% for acc in accounts %}
+        <input type="radio" id="acc-{{ acc.id }}" name="account_id" value="{{ acc.id }}" {% if account_id == acc.id %}checked{% endif %} onchange="this.form.requestSubmit()">
+        <label for="acc-{{ acc.id }}"><span class="av">{{ (acc.udemy_name or 'U')[:1]|upper }}</span>{{ acc.udemy_name or 'Udemy account' }}</label>
+        {% endfor %}
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <input class="input" style="max-width:420px;flex:1" type="search" name="q" value="{{ q }}" placeholder="Search by title... (leave blank to browse everything)">
+      <button class="btn btn-primary" type="submit">{{ 'Search' if q else 'Browse' }}</button>
+    </div>
+  </form>
+</div>
 
-{% if error %}
-<div class="ud-alert ud-alert-warn">Search failed: {{ error }}</div>
-{% endif %}
+{% if error %}<div class="form-error">Search failed: {{ error }}</div>{% endif %}
 
 {% if searched %}
   {% if results %}
-  <div class="ud-courses">
+  <div class="card-head" style="margin-bottom:12px">
+    <div><h2 style="margin:0">{{ results|length }} course{{ '' if results|length == 1 else 's' }} found</h2>
+      <div class="sub">{% if q %}Matching "{{ q }}"{% else %}Newest enrollments first{% endif %}</div></div>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))">
     {% for c in results %}
-    <div class="ud-course-card">
-      <div class="ud-thumb">
-        {% if c.image %}<img src="{{ c.image }}" alt="" loading="lazy" referrerpolicy="no-referrer">
-        {% else %}<div class="no-img">▶</div>{% endif %}
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="aspect-ratio:16/9;background:var(--surface-2);display:flex;align-items:center;justify-content:center;overflow:hidden">
+        {% if c.image %}<img src="{{ c.image }}" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover">
+        {% else %}<span style="font-size:32px;color:var(--muted)">&#9654;</span>{% endif %}
       </div>
-      <div class="ud-course-body">
-        <div class="ud-course-title" title="{{ c.title }}">{{ c.title[:68] }}{% if c.title|length > 68 %}…{% endif %}</div>
-        <div class="ud-course-meta">{{ c.account_name }}{% if c.content_info %} · {{ c.content_info }}{% endif %}</div>
-        <a class="ud-btn ud-btn-outline ud-btn-sm" href="{{ c.url or 'https://www.udemy.com' }}" target="_blank" rel="noopener">Open in Udemy →</a>
+      <div style="padding:14px">
+        <div style="font-weight:700;color:var(--ink);line-height:1.35" title="{{ c.title }}">{{ c.title[:70] }}{% if c.title|length > 70 %}...{% endif %}</div>
+        <div class="hint" style="display:flex;align-items:center;gap:6px;margin-top:4px">
+          <span class="chip chip-auto" style="padding:2px 8px">{{ c.account_name }}</span>{% if c.content_info %}<span>{{ c.content_info }}</span>{% endif %}
+        </div>
+        <a class="btn btn-outline btn-sm btn-block" style="margin-top:12px" href="{{ c.url or 'https://www.udemy.com' }}" target="_blank" rel="noopener">Open in Udemy</a>
       </div>
     </div>
     {% endfor %}
   </div>
   {% else %}
-  <div class="ud-card"><p class="ud-muted">No courses matched “{{ q }}”.</p></div>
+  <div class="card"><div class="empty"><div class="big">&#128269;</div><p>{% if q %}No courses matched "{{ q }}".{% else %}This account has no courses yet.{% endif %}</p></div></div>
   {% endif %}
 {% else %}
-  {% if not accounts %}
-  <div class="ud-card"><p class="ud-muted">Link a Udemy account on the <a href="/dashboard">dashboard</a> first.</p></div>
-  {% endif %}
+  <div class="card"><div class="empty"><div class="big">&#128218;</div><p>Pick an account above and hit "Browse", or type a search term.</p></div></div>
+{% endif %}
 {% endif %}
 {% endblock %}

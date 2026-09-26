@@ -1,47 +1,31 @@
 {% extends "base.html" %}
-{% block title %}Log in — {{ app_name }}{% endblock %}
+{% block title %}Log in - {{ app_name }}{% endblock %}
 {% block content %}
-<div class="ud-auth-wrap">
-  <div class="ud-auth-card">
-    <h1 class="ud-auth-title">Log in to your account</h1>
-    <p class="ud-auth-sub">Access your auto-enrollment dashboard</p>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <svg viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M12 2 2 7l10 5 10-5-10-5Zm0 7.2L4.9 6 12 4.3 19.1 6 12 9.2ZM4 10.5v4.2c0 1.9 3.6 3.8 8 3.8s8-1.9 8-3.8v-4.2l-8 4-8-4Z"/></svg>
+      <span class="brand-word">udemy</span><span class="brand-suffix">enroller</span>
+    </div>
+    <h1 class="auth-title">Welcome back</h1>
+    <p class="auth-sub">Log in to your auto-enroll dashboard.</p>
 
-    {% if error %}<div class="ud-form-error">{{ error }}</div>{% endif %}
+    {% if error %}<div class="form-error">{{ error }}</div>{% endif %}
 
     <form method="post" action="/login">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <div class="ud-field">
-        <label class="ud-label" for="email">Email</label>
-        <input class="ud-input" type="email" id="email" name="email" required autofocus autocomplete="email">
+      <div class="field">
+        <label class="label" for="email">Email</label>
+        <input class="input" type="email" id="email" name="email" required autofocus autocomplete="email">
       </div>
-      <div class="ud-field">
-        <label class="ud-label" for="password">Password</label>
-        <input class="ud-input" type="password" id="password" name="password" required autocomplete="current-password">
+      <div class="field">
+        <label class="label" for="password">Password</label>
+        <input class="input" type="password" id="password" name="password" required autocomplete="current-password">
       </div>
-      <button class="ud-btn ud-btn-primary ud-btn-block" type="submit">Log in</button>
+      <button class="btn btn-primary btn-block" type="submit">Log in</button>
     </form>
 
-    {% if grab %}
-    <hr class="ud-divider">
-    <div style="text-align:center">
-      <strong style="font-size:14px">⚡ Log in with Udemy (easiest)</strong>
-      <p class="ud-muted" style="margin:6px 0 10px; font-size:13px">
-        One click: the app opens udemy.com in its browser, checks if you're
-        already logged in, grabs the token, and signs you in here automatically.
-      </p>
-      <a href="/grab-login" class="ud-btn ud-btn-primary ud-btn-block">Grab Udemy login</a>
-      {% if grab.status == 'not_logged_in' %}
-      <p class="ud-hint" style="margin-top:10px">Last try: login not detected in the app's browser.
-        Log in inside that Chrome window once — it stays logged in for next time.</p>
-      {% elif grab.status == 'error' %}
-      <p class="ud-hint" style="margin-top:10px">Last try failed: {{ grab.message or 'browser error' }}</p>
-      {% endif %}
-    </div>
-    {% endif %}
-
-    <div class="ud-auth-foot">
-      Don't have an account? <a href="/register">Create one</a>
-    </div>
+    <div class="auth-foot">New here? <a href="/register">Create an account</a></div>
   </div>
 </div>
 {% endblock %}

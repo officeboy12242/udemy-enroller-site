@@ -1,235 +1,293 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — {{ app_name }}{% endblock %}
+{% block title %}Dashboard - {{ app_name }}{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
 {% block content %}
-<h1 class="ud-page-title">Welcome back{% if accounts and accounts[0].udemy_name %}, {{ accounts[0].udemy_name }}{% endif %}</h1>
-<p class="ud-page-sub">Your auto-enroller runs on the server 24/7 — even when this page is closed.</p>
 
-{% if flash %}
-<div class="ud-form-{{ 'ok' if flash[0] == 'ok' else 'error' }}">{{ flash[1] }}</div>
-{% endif %}
+{% set ms = stats.money_saved %}
+{% set src = stats.source %}
 
-<div class="ud-stats">
-  <div class="ud-stat"><div class="num" id="stat-today">{{ today_count }}</div><div class="lbl">Enrolled today</div></div>
-  <div class="ud-stat"><div class="num">{{ total_count }}</div><div class="lbl">Enrolled all-time</div></div>
-  <div class="ud-stat"><div class="num">{{ accounts|length }}</div><div class="lbl">Linked accounts</div></div>
-  <div class="ud-stat"><div class="num">{{ auto.total_enrolled if auto else 0 }}</div><div class="lbl">Auto-enrolled total</div></div>
-</div>
-
-{# ── Auto-enroll command center ── #}
-<div class="ud-card" id="auto-card">
-  <h2>⚡ Auto-Enroll Engine</h2>
-  <div class="ud-actions-row" style="margin-bottom:14px">
-    <span>Status:</span>
-    {% set enabled = auto and auto.enabled %}
-    <span class="ud-chip {% if enabled %}ud-chip-on{% else %}ud-chip-off{% endif %}" id="auto-enabled-chip">
-      {{ 'ON — runs every ' + interval_min|string + ' min' if enabled else 'OFF' }}
-    </span>
-    <span class="ud-chip ud-chip-run" id="auto-running-chip" style="display:none">Running now…</span>
-  </div>
-
-  <div id="auto-detail" class="ud-muted" style="margin-bottom:16px">
-    {% if auto and auto.last_run %}
-      Last run: {{ auto.last_run[:19].replace('T', ' ') }} UTC — {{ auto.last_result or '—' }}
-      {% if auto.next_run %} · Next: {{ auto.next_run[:19].replace('T', ' ') }} UTC{% endif %}
-    {% else %}
-      No runs yet. Turn auto-enroll ON or click Enroll Now.
-    {% endif %}
-  </div>
-
-  <div class="ud-actions-row">
-    <form method="post" action="/settings/auto-enroll" class="ud-inline-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="enabled" value="{{ '0' if enabled else '1' }}">
-      <button class="ud-btn {{ 'ud-btn-ghost' if enabled else 'ud-btn-primary' }}" type="submit">
-        {{ 'Turn OFF auto-enroll' if enabled else 'Turn ON auto-enroll' }}
-      </button>
-    </form>
-    <form method="post" action="/settings/auto-enroll-now" class="ud-inline-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button class="ud-btn ud-btn-outline" type="submit" id="btn-enroll-now">Enroll Now</button>
-    </form>
-    <a class="ud-btn ud-btn-ghost" href="/courses">Browse free courses →</a>
-  </div>
-</div>
-
-{# ── Linked accounts ── #}
-<div class="ud-card">
-  <h2>🔗 Linked Udemy accounts</h2>
-  {% if accounts %}
-  <table class="ud-table">
-    <thead><tr><th>Account</th><th>Udemy ID</th><th>Auto</th><th>Actions</th></tr></thead>
-    <tbody>
-    {% for acc in accounts %}
-      <tr>
-        <td><strong>{{ acc.udemy_name or 'Udemy account' }}</strong></td>
-        <td>{{ acc.udemy_user_id or '—' }}</td>
-        <td>
-          <form method="post" action="/accounts/{{ acc.id }}/auto-toggle" class="ud-inline-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="ud-btn ud-btn-sm {{ 'ud-btn-ghost' if acc.auto_enroll else 'ud-btn-outline' }}" type="submit">
-              {{ 'Auto ON' if acc.auto_enroll else 'Auto OFF' }}
-            </button>
-          </form>
-        </td>
-        <td>
-          <form method="post" action="/accounts/{{ acc.id }}/delete" class="ud-inline-form"
-                onsubmit="return confirm('Unlink this Udemy account?')">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="ud-btn ud-btn-sm ud-btn-danger" type="submit">Unlink</button>
-          </form>
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="ud-muted">No Udemy account linked yet. Link one below — it takes 10 seconds.</p>
-  {% endif %}
-
-  <hr class="ud-divider">
-  <h2 style="font-size:16px">Link a new Udemy account</h2>
-
-  {# ── One-click browser grab ── #}
-  <div class="ud-alert" style="border-color:var(--purple); background:#F7F1FE">
-    <strong>⚡ Easiest way — one click, no typing:</strong>
-    <span style="font-size:14px">The app opens udemy.com in its own Chrome window. If that browser is already
-    logged in (it stays logged in between tries), the token is grabbed and linked automatically.</span>
-    <div style="margin-top:10px">
-      <a href="/grab-login" class="ud-btn ud-btn-primary ud-btn-sm">Grab Udemy login</a>
+<!-- Row 1: source ring, accounts ring, comparison bars, mini metrics -->
+<div class="grid top-row" style="margin-bottom:16px">
+  <div class="card ring-card">
+    <div class="ring-wrap">
+      <svg class="ring-svg" width="{{ donut_source.size }}" height="{{ donut_source.size }}" viewBox="0 0 {{ donut_source.size }} {{ donut_source.size }}">
+        <circle class="ring-track" cx="{{ donut_source.c }}" cy="{{ donut_source.c }}" r="{{ donut_source.r }}" fill="none" stroke-width="{{ donut_source.stroke }}"/>
+        {% for a in donut_source.arcs %}
+        <circle class="{{ a.cls }}" cx="{{ donut_source.c }}" cy="{{ donut_source.c }}" r="{{ donut_source.r }}" fill="none"
+          stroke-width="{{ donut_source.stroke }}" stroke-linecap="round"
+          stroke-dasharray="{{ a.dasharray }}" stroke-dashoffset="{{ a.dashoffset }}"
+          transform="rotate(-90 {{ donut_source.c }} {{ donut_source.c }})"/>
+        {% endfor %}
+      </svg>
+      <div class="ring-center"><span class="n" data-count="{{ donut_source.total }}">{{ donut_source.total }}</span><span class="l">Enrolled</span></div>
+    </div>
+    <div class="ring-title">By source</div>
+    <div class="legend-row">
+      <span><span class="legend-dot" style="background:var(--teal)"></span>Auto {{ src.auto }}</span>
+      <span><span class="legend-dot" style="background:var(--primary)"></span>Manual {{ src.manual }}</span>
     </div>
   </div>
-  <p class="ud-muted" style="margin:8px 0 4px">…or link with email &amp; password below (token captured automatically). If Udemy asks for a captcha, use the token option.</p>
-  <p class="ud-muted">
-    Log in with your Udemy email &amp; password — the access token is captured automatically.
-    If Udemy asks for a captcha, use the token option instead.
-  </p>
 
-  <div class="ud-form-error" id="link-error" style="display:none"></div>
-  <div class="ud-form-ok" id="link-ok" style="display:none"></div>
-
-  <form id="link-form">
-    <div class="ud-actions-row" style="margin-bottom:12px">
-      <label><input type="radio" name="link-mode" value="password" checked> Email &amp; password</label>
-      <label><input type="radio" name="link-mode" value="token"> Access token</label>
+  <div class="card ring-card">
+    <div class="ring-wrap">
+      <svg class="ring-svg" width="{{ donut_accounts.size }}" height="{{ donut_accounts.size }}" viewBox="0 0 {{ donut_accounts.size }} {{ donut_accounts.size }}">
+        <circle class="ring-track" cx="{{ donut_accounts.c }}" cy="{{ donut_accounts.c }}" r="{{ donut_accounts.r }}" fill="none" stroke-width="{{ donut_accounts.stroke }}"/>
+        {% for a in donut_accounts.arcs %}
+        <circle class="{{ a.cls }}" cx="{{ donut_accounts.c }}" cy="{{ donut_accounts.c }}" r="{{ donut_accounts.r }}" fill="none"
+          stroke-width="{{ donut_accounts.stroke }}" stroke-linecap="round"
+          stroke-dasharray="{{ a.dasharray }}" stroke-dashoffset="{{ a.dashoffset }}"
+          transform="rotate(-90 {{ donut_accounts.c }} {{ donut_accounts.c }})"/>
+        {% endfor %}
+      </svg>
+      <div class="ring-center"><span class="n">{{ stats.accounts_active }}/{{ stats.accounts_total }}</span><span class="l">Active</span></div>
     </div>
+    <div class="ring-title">Accounts</div>
+    <div class="ring-sub">Connected Udemy accounts</div>
+  </div>
 
-    <div id="mode-password">
-      <div class="ud-grid ud-grid-2">
-        <div class="ud-field">
-          <label class="ud-label">Udemy email</label>
-          <input class="ud-input" type="email" id="ud-email" autocomplete="off">
+  <div class="card">
+    <div class="card-head" style="margin-bottom:14px"><div><h2 style="margin:0">Overview</h2><div class="sub">How your enrollments stack up</div></div></div>
+    {% set maxv = [stats.total_enrolled, 1] | max %}
+    <div class="cmp-list">
+      <div class="cmp-row">
+        <div class="cmp-top"><span class="cmp-label">Today</span><span class="cmp-value red">{{ stats.today_enrolled }}</span></div>
+        <div class="cmp-track"><div class="cmp-fill red" style="width:{{ ((stats.today_enrolled / maxv) * 100)|round(1) }}%"></div></div>
+      </div>
+      <div class="cmp-row">
+        <div class="cmp-top"><span class="cmp-label">This week</span><span class="cmp-value teal">{{ stats.week_enrolled }}</span></div>
+        <div class="cmp-track"><div class="cmp-fill teal" style="width:{{ ((stats.week_enrolled / maxv) * 100)|round(1) }}%"></div></div>
+      </div>
+      <div class="cmp-row">
+        <div class="cmp-top"><span class="cmp-label">All time</span><span class="cmp-value red">{{ stats.total_enrolled }}</span></div>
+        <div class="cmp-track"><div class="cmp-fill red" style="width:100%"></div></div>
+      </div>
+      <div class="cmp-row">
+        <div class="cmp-top"><span class="cmp-label">Money saved</span><span class="cmp-value teal">{{ ms.symbol }}{{ '%.0f'|format(ms.amount) }}</span></div>
+        <div class="cmp-track"><div class="cmp-fill teal" style="width:{{ stats.milestones.savings.pct }}%"></div></div>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:2px">Counts scaled to your all-time total; savings shown as progress to the next {{ ms.symbol }}{{ stats.milestones.savings.next }} milestone.</div>
+  </div>
+
+  <div class="mini-col">
+    <div class="card mini-tile">
+      <span class="mini-ico teal"><svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="m12 2 2.9 6.6L22 9.3l-5 4.8 1.3 7L12 17.8 5.7 21l1.3-7-5-4.8 7.1-.7L12 2Z"/></svg></span>
+      <div><div class="mini-value" data-count="{{ ms.avg_per_course }}" data-decimals="2" data-prefix="{{ ms.symbol }}">{{ ms.symbol }}{{ '%.2f'|format(ms.avg_per_course) }}</div><div class="mini-label">Avg. saved / course</div></div>
+    </div>
+    <div class="card mini-tile">
+      <span class="mini-ico red"><svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="m12 2 2.9 6.6L22 9.3l-5 4.8 1.3 7L12 17.8 5.7 21l1.3-7-5-4.8 7.1-.7L12 2Z"/></svg></span>
+      <div><div class="mini-value" data-count="{{ stats.avg_per_day_week }}" data-decimals="1">{{ stats.avg_per_day_week }}</div><div class="mini-label">Avg. / day (7d)</div></div>
+    </div>
+    <div class="card mini-tile" {% if stats.library.synced_at %}title="Synced {{ stats.library.synced_at[:16].replace('T',' ') }} UTC"{% endif %}>
+      <span class="mini-ico teal"><svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M4 6a2 2 0 0 1 2-2h9v16H6a2 2 0 0 0-2 2V6Zm14-2h.5A1.5 1.5 0 0 1 20 5.5V18a2 2 0 0 0-2 2V4Z"/></svg></span>
+      {% if stats.library.total is not none %}
+      <div><div class="mini-value" data-count="{{ stats.library.total }}">{{ stats.library.total }}</div><div class="mini-label">In your Udemy account(s)</div></div>
+      {% else %}
+      <div><div class="mini-value" style="font-size:15px;color:var(--muted)">—</div><div class="mini-label">In your Udemy account(s) - syncs on next run</div></div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Row 2: adoption gauge, weekly sparkline tile -->
+<div class="grid row-2" style="margin-bottom:16px">
+  <div class="card gauge-card">
+    <div class="gauge-figure">
+      <svg width="{{ gauge_adoption.size }}" height="{{ gauge_adoption.height }}" viewBox="0 0 {{ gauge_adoption.size }} {{ gauge_adoption.height }}">
+        <path class="gauge-bg" d="{{ gauge_adoption.bg_path }}" fill="none" stroke-width="16" stroke-linecap="round"/>
+        <path class="gauge-value" d="{{ gauge_adoption.value_path }}" fill="none" stroke-width="16" stroke-linecap="round"/>
+        <line class="gauge-needle" x1="{{ gauge_adoption.cx }}" y1="{{ gauge_adoption.cy }}" x2="{{ gauge_adoption.needle_x }}" y2="{{ gauge_adoption.needle_y }}"/>
+        <circle class="gauge-hub" cx="{{ gauge_adoption.cx }}" cy="{{ gauge_adoption.cy }}" r="6"/>
+      </svg>
+      <div class="gauge-pct" data-count="{{ gauge_adoption.pct }}" data-suffix="%">{{ gauge_adoption.pct }}%</div>
+    </div>
+    <div>
+      <h2 style="margin:0 0 4px">Auto-enroll adoption</h2>
+      <div class="sub" style="margin-bottom:14px">Share of enrollments handled automatically</div>
+      <div class="gauge-stats">
+        <div class="gauge-stat"><div class="n" style="color:var(--teal-600)" data-count="{{ src.auto }}">{{ src.auto }}</div><div class="l">Auto</div></div>
+        <div class="gauge-stat"><div class="n" style="color:var(--primary-600)" data-count="{{ src.manual }}">{{ src.manual }}</div><div class="l">Manual</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card spark-card">
+    <span class="spark-ico"><svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M13 3a9 9 0 1 0 8.94 10H19.9A7 7 0 1 1 13 5.1V11l5 3 .9-1.6L14 9.7V3Z"/></svg></span>
+    <div class="spark-body">
+      <div class="stat-label">This week</div>
+      <div class="spark-value"><span data-count="{{ stats.week_enrolled }}">{{ stats.week_enrolled }}</span> <span style="font-size:12px;color:var(--muted);font-weight:600">enrolled</span></div>
+      <svg class="spark-bars" width="{{ sparkline_week.width }}" height="{{ sparkline_week.height }}" viewBox="0 0 {{ sparkline_week.width }} {{ sparkline_week.height }}" style="margin-top:8px">
+        {% for b in sparkline_week.bars %}
+        <rect class="{{ 'b3' if loop.last else ('b2' if b.v > 0 else 'b1') }}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="2.5"><title>{{ b.v }}</title></rect>
+        {% endfor %}
+      </svg>
+    </div>
+  </div>
+</div>
+
+<!-- Row 3: milestone tiles -->
+<div class="grid row-2" style="margin-bottom:16px">
+  <div class="card milestone">
+    <div class="milestone-top">
+      <div><div class="stat-label">Enrolled via this app</div><div class="milestone-value" data-count="{{ stats.total_enrolled }}">{{ stats.total_enrolled }}</div></div>
+      {% if stats.today_enrolled > 0 %}<span class="badge-new">New today</span>{% endif %}
+    </div>
+    <div class="progress"><span style="width:{{ stats.milestones.courses.pct }}%"></span></div>
+    <div class="milestone-goal">{{ stats.milestones.courses.pct }}% to {{ stats.milestones.courses.next }} courses</div>
+  </div>
+  <div class="card milestone">
+    <div class="milestone-top">
+      <div><div class="stat-label">Money saved</div><div class="milestone-value" data-count="{{ ms.amount }}" data-decimals="0" data-prefix="{{ ms.symbol }}">{{ ms.symbol }}{{ '%.0f'|format(ms.amount) }}</div></div>
+      {% if ms.amount > 0 %}<span class="badge-new">Growing</span>{% endif %}
+    </div>
+    <div class="progress teal"><span style="width:{{ stats.milestones.savings.pct }}%"></span></div>
+    <div class="milestone-goal">{{ stats.milestones.savings.pct }}% to {{ ms.symbol }}{{ stats.milestones.savings.next }}</div>
+  </div>
+</div>
+
+<div class="grid dash-grid">
+  <div class="grid" style="gap:16px">
+    <div class="card card-pad-lg">
+      <div class="enroll-panel">
+        <div class="card-head">
+          <div><h2 style="margin:0">Enroll now</h2>
+            <div class="sub">Scan the latest free courses and enroll all your accounts.</div></div>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-danger" id="enroll-stop-btn" data-csrf="{{ csrf_token }}" style="display:none">Stop</button>
+            <button class="btn btn-primary btn-lg" id="enroll-now-btn" data-csrf="{{ csrf_token }}"
+                    {% if not accounts %}disabled title="Connect a Udemy account first"{% endif %}>Enroll now</button>
+          </div>
         </div>
-        <div class="ud-field">
-          <label class="ud-label">Udemy password</label>
-          <input class="ud-input" type="password" id="ud-password" autocomplete="off">
+
+        <div class="filter-line">
+          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4Z"/></svg>
+          Filters: <span class="summary-chip">{{ filter_summary }}</span><a href="/filters">Edit</a>
+        </div>
+        <div id="enroll-idle">
+          {% if accounts %}
+          <div class="idle-engine" id="idle-engine">
+            <span class="eng-dot"></span>
+            <span id="idle-engine-text">{% if auto.enabled %}Auto-enroll is on - next run in <b id="idle-countdown">--:--</b>. Or click "Enroll now".{% else %}Auto-enroll is off. Click "Enroll now", or turn auto-enroll on.{% endif %}</span>
+          </div>
+          {% else %}<div class="hint">Connect a Udemy account below to get started.</div>{% endif %}
+        </div>
+
+        <div id="enroll-live" style="display:none">
+          <div class="phase-line"><span class="run-kind manual" id="run-kind"><span class="live-dot"></span><span id="run-kind-text">Manual run</span></span><span id="run-phase">Starting...</span><span class="hint" style="margin:0" id="run-count"></span></div>
+          <div id="enroll-progress" class="progress"><span id="enroll-bar"></span></div>
+          <div class="current-line" id="enroll-current"></div>
+          <div class="tally">
+            <span class="pill ok">Enrolled <b id="t-enrolled">0</b></span>
+            <span class="pill">Already <b id="t-already">0</b></span>
+            <span class="pill warn">Expired <b id="t-expired">0</b></span>
+            <span class="pill bad">Failed <b id="t-failed">0</b></span>
+            <span class="pill">Filtered out <b id="t-filtered">0</b></span>
+          </div>
+          <ul class="feed" id="enroll-feed"></ul>
         </div>
       </div>
     </div>
 
-    <div id="mode-token" style="display:none">
-      <div class="ud-field">
-        <label class="ud-label">access_token cookie value</label>
-        <input class="ud-input" type="text" id="ud-token" placeholder="Paste from udemy.com cookies (F12 → Application → Cookies)">
-        <div class="ud-hint">
-          On udemy.com press F12 → Application → Cookies → www.udemy.com → copy <code>access_token</code>.
-          Optional: also copy <code>client_id</code>.
-        </div>
+    <div class="card">
+      <div class="card-head"><div><h2 style="margin:0">Enrollments</h2><div class="sub">Last 14 days</div></div></div>
+      {% set series = stats.day_series %}
+      {% set n = series|length %}
+      {% set maxc = (series | map(attribute='count') | max) or 1 %}
+      {% set W = 300 %}{% set H = 120 %}{% set base = 108 %}{% set top = 12 %}
+      {% set ns = namespace(pts=[]) %}
+      {% for d in series %}
+        {% set x = (loop.index0 * (W / (n - 1)))|round(2) %}
+        {% set y = (base - (d.count / maxc) * (base - top))|round(2) %}
+        {% set _ = ns.pts.append((x, y, d.date, d.count)) %}
+      {% endfor %}
+      <svg class="chart" viewBox="0 0 {{ W }} {{ H }}" preserveAspectRatio="none" role="img" aria-label="Enrollments over the last 14 days">
+        <defs>
+          <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--primary)" stop-opacity="0.3"/>
+            <stop offset="100%" stop-color="var(--primary)" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <line class="grid-line" x1="0" y1="{{ top }}" x2="{{ W }}" y2="{{ top }}"/>
+        <line class="grid-line" x1="0" y1="{{ (top + base) / 2 }}" x2="{{ W }}" y2="{{ (top + base) / 2 }}"/>
+        <line class="grid-line" x1="0" y1="{{ base }}" x2="{{ W }}" y2="{{ base }}"/>
+        <path class="area" d="M {{ ns.pts[0][0] }} {{ base }} {% for p in ns.pts %}L {{ p[0] }} {{ p[1] }} {% endfor %}L {{ ns.pts[-1][0] }} {{ base }} Z"/>
+        <path class="line" d="{% for p in ns.pts %}{{ 'M' if loop.first else 'L' }} {{ p[0] }} {{ p[1] }} {% endfor %}"/>
+        {% for p in ns.pts %}<circle class="dot" cx="{{ p[0] }}" cy="{{ p[1] }}" r="2.4"><title>{{ p[2] }}: {{ p[3] }}</title></circle>{% endfor %}
+      </svg>
+      <div class="chart-labels"><span>{{ series[0].date[5:] }}</span><span>{{ series[-1].date[5:] }}</span></div>
+    </div>
+  </div>
+
+  <div class="grid" style="gap:16px">
+    <div class="card">
+      <div class="card-head" style="margin:0">
+        <div><h2 style="margin:0">Auto-enroll</h2><div class="sub">Runs in the background every {{ interval_min }} min.</div></div>
+        <label class="switch"><input type="checkbox" id="auto-toggle" data-csrf="{{ csrf_token }}" {% if auto.enabled %}checked{% endif %}><span class="track"><span class="thumb"></span></span></label>
       </div>
-      <div class="ud-field">
-        <label class="ud-label">client_id (optional)</label>
-        <input class="ud-input" type="text" id="ud-client-id" autocomplete="off">
-      </div>
+      <hr class="divider">
+      <div class="hint" style="display:flex;justify-content:space-between;margin:0 0 8px"><span>Status</span><span id="auto-chip" class="chip {{ 'chip-on' if auto.enabled else 'chip-off' }}">{{ 'On' if auto.enabled else 'Off' }}</span></div>
+      <div class="hint" style="display:flex;justify-content:space-between;margin:0 0 8px"><span>Last run</span><span>{{ (auto.last_run[:16].replace('T',' ')) if auto.last_run else '-' }}</span></div>
+      <div class="hint" style="display:flex;justify-content:space-between;margin:0"><span>Last result</span><span style="text-align:right;max-width:60%">{{ auto.last_result or '-' }}</span></div>
     </div>
 
-    <input type="hidden" name="csrf_token" id="link-csrf" value="{{ csrf_token }}">
-    <button class="ud-btn ud-btn-primary" type="submit" id="btn-link">Link account</button>
-    <span class="ud-muted" id="link-progress" style="display:none">Contacting Udemy…</span>
-  </form>
+    <div class="card">
+      <h2>Connected accounts</h2>
+      {% if accounts %}
+      <div class="acct-list">
+        {% for a in accounts %}
+        <div class="acct">
+          <span class="avatar">{{ (a.udemy_name or 'U')[:1]|upper }}</span>
+          <div class="meta">
+            <div class="name">{{ a.udemy_name or 'Udemy account' }}</div>
+            <div class="sub"><span class="chip {{ 'chip-on' if a.is_active else 'chip-off' }}">{{ 'Active' if a.is_active else 'Inactive' }}</span>{% if a.auto_enroll %}<span class="chip chip-auto">Auto</span>{% endif %}</div>
+            {% set af = account_filters[a.id] %}
+            <a class="acct-filter" href="/filters?account={{ a.id }}" title="Edit this account's filters">
+              <svg viewBox="0 0 24 24" width="11" height="11"><path fill="currentColor" d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4Z"/></svg>
+              {% if af.custom %}<b>Custom:</b> {% endif %}{{ af.summary }}</a>
+          </div>
+          <div class="actions">
+            <form method="post" action="/accounts/{{ a.id }}/auto-toggle" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-ghost btn-sm" type="submit">{{ 'Auto off' if a.auto_enroll else 'Auto on' }}</button>
+            </form>
+            <form method="post" action="/accounts/{{ a.id }}/delete" class="inline-form" onsubmit="return confirm('Remove this account?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-danger btn-sm" type="submit">Remove</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <a href="{{ connect_url }}" class="btn btn-outline btn-block" style="margin-top:14px">+ Connect another account</a>
+      {% else %}
+      <div class="empty">
+        <div class="big">&#128273;</div>
+        <p>No Udemy account connected yet.</p>
+        <a href="{{ connect_url }}" class="btn btn-primary">Connect Udemy account</a>
+        <div class="hint" style="margin-top:10px">A login window opens - sign in there (captcha/OTP included) and we connect it automatically.</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
 </div>
 
-{# ── Recent enrollments ── #}
-<div class="ud-card">
-  <h2>🕒 Recently enrolled</h2>
+<div class="card" style="margin-top:16px">
+  <h2>Recent activity</h2>
   {% if recent %}
-  <table class="ud-table">
+  <table class="table">
     <thead><tr><th>Course</th><th>Source</th><th>When (UTC)</th></tr></thead>
     <tbody>
-    {% for r in recent %}
+      {% for r in recent %}
       <tr>
         <td><a href="{{ r.course_url }}" target="_blank" rel="noopener">{{ r.title or r.slug }}</a></td>
-        <td><span class="ud-chip {{ 'ud-chip-on' if r.source == 'auto' else 'ud-chip-off' }}">{{ r.source }}</span></td>
-        <td class="ud-muted">{{ r.created_at[:19].replace('T', ' ') }}</td>
+        <td><span class="chip {{ 'chip-auto' if r.source == 'auto' else 'chip-manual' }}">{{ r.source }}</span></td>
+        <td class="dim">{{ r.created_at[:16].replace('T',' ') }}</td>
       </tr>
-    {% endfor %}
+      {% endfor %}
     </tbody>
   </table>
-  <p><a href="/history">Full history →</a></p>
   {% else %}
-  <p class="ud-muted">Nothing enrolled yet. The engine checks for new free courses every {{ interval_min }} minutes when auto-enroll is ON.</p>
+  <div class="empty"><div class="big">&#127891;</div><p>No enrollments yet. Click "Enroll now" to get started.</p></div>
   {% endif %}
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-// Mode switch
-document.querySelectorAll('input[name="link-mode"]').forEach(function(radio){
-  radio.addEventListener('change', function(){
-    document.getElementById('mode-password').style.display = this.value === 'password' ? '' : 'none';
-    document.getElementById('mode-token').style.display = this.value === 'token' ? '' : 'none';
-  });
-});
-
-document.getElementById('link-form').addEventListener('submit', async function(e){
-  e.preventDefault();
-  const errBox = document.getElementById('link-error');
-  const okBox = document.getElementById('link-ok');
-  const prog = document.getElementById('link-progress');
-  const btn = document.getElementById('btn-link');
-  errBox.style.display = 'none'; okBox.style.display = 'none'; prog.style.display = '';
-  btn.disabled = true;
-
-  const mode = document.querySelector('input[name="link-mode"]:checked').value;
-  const data = {
-    csrf_token: document.getElementById('link-csrf').value,
-    mode: mode,
-  };
-  if (mode === 'password') {
-    data.email = document.getElementById('ud-email').value;
-    data.password = document.getElementById('ud-password').value;
-  } else {
-    data.access_token = document.getElementById('ud-token').value;
-    data.client_id = document.getElementById('ud-client-id').value;
-  }
-
-  const res = await postForm('/accounts/link', data);
-  prog.style.display = 'none'; btn.disabled = false;
-  if (res.ok && res.json && res.json.ok) {
-    okBox.textContent = 'Linked as ' + (res.json.name || 'Udemy account') + ' — reloading…';
-    okBox.style.display = '';
-    setTimeout(function(){ location.reload(); }, 900);
-  } else {
-    errBox.textContent = (res.json && res.json.error) || 'Failed to link account.';
-    errBox.style.display = '';
-  }
-});
-
-// Live auto status polling
-async function pollAuto() {
-  try {
-    const res = await fetch('/api/auto-status', {headers: {'X-Requested-With': 'XMLHttpRequest'}});
-    if (!res.ok) return;
-    const s = await res.json();
-    const runChip = document.getElementById('auto-running-chip');
-    const detail = document.getElementById('auto-detail');
-    if (runChip) runChip.style.display = s.running ? '' : 'none';
-    if (detail && s.last_run) {
-      detail.textContent = 'Last run: ' + s.last_run.replace('T', ' ').slice(0, 19) +
-        ' UTC — ' + (s.last_result || '—') +
-        (s.next_run ? (' · Next: ' + s.next_run.replace('T', ' ').slice(0, 19) + ' UTC') : '');
-    }
-  } catch (e) { /* ignore */ }
-}
-setInterval(pollAuto, 5000);
-</script>
 {% endblock %}

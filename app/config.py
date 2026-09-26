@@ -2,7 +2,7 @@
 
 All secrets come from environment variables (.env is loaded by run.py).
 Every value has a safe default so the app boots even with an empty env,
-but production deployments MUST set SECRET_KEY and SITE_ACCESS_CODE.
+but production deployments MUST set SECRET_KEY.
 """
 import os
 import secrets
@@ -36,22 +36,35 @@ if not SECRET_KEY:
         except Exception:
             pass
 
-# Code required to register an account on the site (invite-style gate).
-SITE_ACCESS_CODE = os.getenv("SITE_ACCESS_CODE", "changeme-access-code")
-
 SESSION_COOKIE_NAME = "uenroller_session"
 SESSION_MAX_AGE = 60 * 60 * 24 * 30          # 30 days
 CSRF_SECRET = SECRET_KEY
+# Set to 1 when serving over HTTPS so the session cookie is marked Secure.
+SESSION_SECURE = os.getenv("SESSION_SECURE", "0") == "1"
 
 # Login rate limiting: max attempts per window per identifier.
 LOGIN_MAX_ATTEMPTS = int(os.getenv("LOGIN_MAX_ATTEMPTS", "8"))
 LOGIN_WINDOW_SECONDS = int(os.getenv("LOGIN_WINDOW_SECONDS", "900"))
 
 # ── Auto-enroll engine ──────────────────────────────────────────────────────
-AUTO_ENROLL_INTERVAL = int(os.getenv("AUTO_ENROLL_INTERVAL", "600"))   # seconds
+# 120s / 2 min, matching the tgbot2 reference bot's AUTO_ENROLL_INTERVAL.
+AUTO_ENROLL_INTERVAL = int(os.getenv("AUTO_ENROLL_INTERVAL", "120"))   # seconds
 AUTO_ENROLL_ENABLED_DEFAULT = os.getenv("AUTO_ENROLL_ENABLED", "1") == "1"
-ENROLL_BATCH_LIMIT = int(os.getenv("ENROLL_BATCH_LIMIT", "50"))        # courses per run
+# No cap on courses per run - every free course the feed finds is attempted.
 FEED_CACHE_TTL = int(os.getenv("FEED_CACHE_TTL", "900"))               # seconds
+# Stop paging the feed once listings are older than this - their coupons are dead.
+FEED_MAX_AGE_HOURS = int(os.getenv("FEED_MAX_AGE_HOURS", "96"))
 
 # ── Server ──────────────────────────────────────────────────────────────────
 PORT = int(os.getenv("PORT", "8123"))
+
+# ── Hosting ─────────────────────────────────────────────────────────────────
+# Render sets RENDER=true and RENDER_EXTERNAL_URL automatically.
+ON_RENDER = bool(os.getenv("RENDER"))
+PUBLIC_URL = (os.getenv("PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL") or "").rstrip("/")
+# The "open a Udemy login window" flow drives a real browser on the machine
+# running the app, so it only makes sense when that machine is your own PC.
+LOCAL_BROWSER_LOGIN = os.getenv("LOCAL_BROWSER_LOGIN", "0" if ON_RENDER else "1") == "1"
+# Self-ping so a free Render instance never idles out and stops auto-enroll
+# (same idea as tgbot2's KEEPALIVE_INTERVAL). 0 disables it.
+KEEPALIVE_INTERVAL = int(os.getenv("KEEPALIVE_INTERVAL", "600" if PUBLIC_URL else "0"))

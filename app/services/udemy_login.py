@@ -124,30 +124,11 @@ def login_with_password(email: str, password: str) -> dict:
     }
 
 
-def verify_token(access_token: str, client_id: str = "") -> dict:
-    """Verify an access_token; returns {valid, udemy_user_id, name, client_id}."""
-    s = requests.Session()
-    s.headers.update({
-        "User-Agent": UA,
-        "X-Requested-With": "XMLHttpRequest",
-        "Accept": "application/json",
-    })
-    s.cookies.set("access_token", access_token, domain=".udemy.com")
-    if client_id:
-        s.cookies.set("client_id", client_id, domain=".udemy.com")
-    try:
-        r = s.get(ME_CONTEXT, timeout=20)
-    except requests.RequestException as e:
-        return {"valid": False, "error": f"network: {e}"}
-    if r.status_code != 200:
-        return {"valid": False, "error": f"HTTP {r.status_code}"}
-    try:
-        data = r.json()
-    except Exception:
-        return {"valid": False, "error": "bad JSON from Udemy"}
+def _parse_me_context(data: dict, client_id: str) -> dict | None:
+    """Pull user info out of a /contexts/me response, or None if not logged in."""
     header = data.get("header", {}) or {}
     if not header.get("isLoggedIn"):
-        return {"valid": False, "error": "not logged in"}
+        return None
     client = data.get("client", {}) or {}
     users = data.get("users", []) or []
     uid = users[0].get("id") if users else None
@@ -158,3 +139,78 @@ def verify_token(access_token: str, client_id: str = "") -> dict:
         "name": name.strip() if name else None,
         "client_id": client_id or client.get("clientId", "") or "",
     }
+
+
+def verify_token(access_token: str, client_id: str = "") -> dict:
+    """Verify an access_token; returns {valid, udemy_user_id, name, client_id}.
+
+    Udemy is inconsistent about how it accepts a raw token, so we try several
+    ways before giving up:
+      1. access_token (+ client_id, if supplied) as cookies -> /contexts/me
+      2. Authorization: Bearer <token> header -> /contexts/me
+      3. Bearer header -> /api-2.0/users/me/  (last-resort identity check)
+    """
+    access_token = (access_token or "").strip()
+    client_id = (client_id or "").strip()
+    if not access_token:
+        return {"valid": False, "error": "empty token"}
+
+    last_error = "not logged in"
+
+    def _session(with_cookies: bool, with_bearer: bool) -> requests.Session:
+        s = requests.Session()
+        s.headers.update({
+            "User-Agent": UA,
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json",
+            "Referer": "https://www.udemy.com/",
+        })
+        if with_bearer:
+            s.headers["Authorization"] = f"Bearer {access_token}"
+        if with_cookies:
+            s.cookies.set("access_token", access_token, domain=".udemy.com")
+            if client_id:
+                s.cookies.set("client_id", client_id, domain=".udemy.com")
+        return s
+
+    # Attempts 1 & 2 — /contexts/me with cookie auth, then Bearer auth.
+    for with_bearer in (False, True):
+        s = _session(with_cookies=True, with_bearer=with_bearer)
+        try:
+            r = s.get(ME_CONTEXT, timeout=20)
+        except requests.RequestException as e:
+            last_error = f"network: {e}"
+            continue
+        if r.status_code != 200:
+            last_error = f"HTTP {r.status_code}"
+            continue
+        try:
+            data = r.json()
+        except Exception:
+            last_error = "bad JSON from Udemy"
+            continue
+        info = _parse_me_context(data, client_id)
+        if info:
+            return info
+        last_error = "not logged in"
+
+    # Attempt 3 — /users/me returns the user object directly when authed.
+    s = _session(with_cookies=True, with_bearer=True)
+    try:
+        r = s.get("https://www.udemy.com/api-2.0/users/me/", timeout=20)
+        if r.status_code == 200:
+            u = r.json()
+            uid = u.get("id")
+            if uid:
+                name = (u.get("display_name") or u.get("name") or "").strip() or None
+                return {"valid": True, "udemy_user_id": uid, "name": name, "client_id": client_id}
+        elif r.status_code in (401, 403):
+            last_error = "not logged in"
+        else:
+            last_error = f"HTTP {r.status_code}"
+    except requests.RequestException as e:
+        last_error = f"network: {e}"
+    except Exception:
+        pass
+
+    return {"valid": False, "error": last_error}

@@ -1,39 +1,36 @@
 {% extends "base.html" %}
-{% block title %}Create account — {{ app_name }}{% endblock %}
+{% block title %}Create account - {{ app_name }}{% endblock %}
 {% block content %}
-<div class="ud-auth-wrap">
-  <div class="ud-auth-card">
-    <h1 class="ud-auth-title">Create your account</h1>
-    <p class="ud-auth-sub">An access code is required to register</p>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <svg viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M12 2 2 7l10 5 10-5-10-5Zm0 7.2L4.9 6 12 4.3 19.1 6 12 9.2ZM4 10.5v4.2c0 1.9 3.6 3.8 8 3.8s8-1.9 8-3.8v-4.2l-8 4-8-4Z"/></svg>
+      <span class="brand-word">udemy</span><span class="brand-suffix">enroller</span>
+    </div>
+    <h1 class="auth-title">Create your account</h1>
+    <p class="auth-sub">Sign up to start auto-enrolling in free courses.</p>
 
-    {% if error %}<div class="ud-form-error">{{ error }}</div>{% endif %}
+    {% if error %}<div class="form-error">{{ error }}</div>{% endif %}
 
     <form method="post" action="/register">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <div class="ud-field">
-        <label class="ud-label" for="email">Email</label>
-        <input class="ud-input" type="email" id="email" name="email" required autocomplete="email">
+      <div class="field">
+        <label class="label" for="email">Email</label>
+        <input class="input" type="email" id="email" name="email" required autofocus autocomplete="email">
       </div>
-      <div class="ud-field">
-        <label class="ud-label" for="password">Password</label>
-        <input class="ud-input" type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
-        <div class="ud-hint">At least 8 characters</div>
+      <div class="field">
+        <label class="label" for="password">Password</label>
+        <input class="input" type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
+        <div class="hint">At least 8 characters.</div>
       </div>
-      <div class="ud-field">
-        <label class="ud-label" for="password2">Confirm password</label>
-        <input class="ud-input" type="password" id="password2" name="password2" required minlength="8" autocomplete="new-password">
+      <div class="field">
+        <label class="label" for="password2">Confirm password</label>
+        <input class="input" type="password" id="password2" name="password2" required minlength="8" autocomplete="new-password">
       </div>
-      <div class="ud-field">
-        <label class="ud-label" for="access_code">Access code</label>
-        <input class="ud-input" type="text" id="access_code" name="access_code" required autocomplete="off">
-        <div class="ud-hint">Ask the site owner for this code</div>
-      </div>
-      <button class="ud-btn ud-btn-primary ud-btn-block" type="submit">Create account</button>
+      <button class="btn btn-primary btn-block" type="submit">Create account</button>
     </form>
 
-    <div class="ud-auth-foot">
-      Already registered? <a href="/login">Log in</a>
-    </div>
+    <div class="auth-foot">Already registered? <a href="/login">Log in</a></div>
   </div>
 </div>
 {% endblock %}

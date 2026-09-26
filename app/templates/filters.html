@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% block title %}Enroll Filters - {{ app_name }}{% endblock %}
+{% block page_title %}Filters{% endblock %}
+{% block content %}
+{% set sel_langs = prefs.languages %}
+{% set sel_cats = prefs.categories %}
+
+<form id="filters-form" method="post" action="/filters" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="account_id" value="{{ scope_acc.id if scope_acc else 0 }}">
+
+  <!-- Which account these filters apply to -->
+  <div class="card scope-card" style="margin-bottom:16px">
+    <div class="scope-head">
+      <div>
+        <h2 style="margin:0">Applies to</h2>
+        <div class="hint" style="margin:2px 0 0">Set one default for every connected account, or give an account its own filters.</div>
+      </div>
+    </div>
+    <div class="scope-list">
+      <a class="scope-item {{ 'on' if not scope_acc }}" href="/filters">
+        <span class="scope-av all"><svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0 2c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4Zm8 0c-.3 0-.7 0-1.1.1 1.3.9 2.1 2.2 2.1 3.9v2h7v-2c0-2.7-5.3-4-8-4Z"/></svg></span>
+        <span class="scope-txt"><b>Default</b><small>All accounts without their own filters</small></span>
+      </a>
+      {% for a in accounts %}
+      <a class="scope-item {{ 'on' if scope_acc and scope_acc.id == a.id }}" href="/filters?account={{ a.id }}">
+        <span class="scope-av">{{ (a.udemy_name or 'U')[:1]|upper }}</span>
+        <span class="scope-txt"><b>{{ a.udemy_name or 'Udemy account' }}</b>
+          <small>{% if a.id in overrides %}<span class="scope-badge custom">Custom</span>{{ account_summaries[a.id] }}{% else %}<span class="scope-badge">Uses default</span>{% endif %}</small></span>
+      </a>
+      {% endfor %}
+    </div>
+    {% if scope_acc %}
+      {% if prefs.scope == 'account' %}
+      <div class="scope-note">
+        <span><b>{{ scope_acc.udemy_name or 'This account' }}</b> has its own filters. The default doesn't apply to it.</span>
+        <button class="btn btn-ghost btn-sm" type="submit" formaction="/filters/use-default" formnovalidate>Use default filters instead</button>
+      </div>
+      {% else %}
+      <div class="scope-note">
+        <span><b>{{ scope_acc.udemy_name or 'This account' }}</b> currently follows the default filters shown below. Saving here gives it its own.</span>
+      </div>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  <!-- Live match preview -->
+  <div class="card card-pad-lg match-card" style="margin-bottom:16px">
+    <div>
+      <div class="match-num"><span id="match-count">{{ matching }}</span><small> / {{ facets.total }}</small></div>
+      <div class="match-label">courses in the current feed match</div>
+    </div>
+    <div>
+      <div class="meter"><span id="match-bar" style="width:{{ ((matching / facets.total) * 100)|round(1) if facets.total else 0 }}%"></span></div>
+      <div class="meter-foot">
+        <span class="summary-chip" id="match-summary">{{ summary }}</span>
+        <span>{% if facets.age_min is none %}Feed not loaded yet{% elif facets.age_min < 1 %}Feed updated just now{% else %}Feed updated {{ facets.age_min }} min ago{% endif %}</span>
+      </div>
+    </div>
+    <div>
+      <button class="btn btn-ghost btn-sm" type="submit" formaction="/filters/refresh" formnovalidate title="Fetch the latest free courses now">Refresh feed</button>
+    </div>
+  </div>
+
+  {% if refreshing %}
+  <div class="form-ok" style="background:var(--info-bg);color:var(--info);display:flex;align-items:center;gap:10px">
+    <span class="spinner"></span> Fetching the latest free courses in the background... this page reloads itself when done.
+  </div>
+  <script>setTimeout(function(){ location.href = "/filters"; }, 8000);</script>
+  {% elif not facets.total %}
+  <div class="form-ok" style="background:var(--info-bg);color:var(--info)">
+    Course counts appear once the free-course feed has loaded. The auto-enroll engine refreshes it every few minutes, or click <b>Refresh feed</b>. You can still pick filters now.
+  </div>
+  {% endif %}
+
+  <div class="grid filters-grid">
+    <!-- Languages -->
+    <div class="card">
+      <div class="group-head">
+        <div><h2 style="margin:0">Languages</h2><div class="hint" style="margin:2px 0 0">Only enroll courses taught in these languages.</div></div>
+        <div class="group-actions">
+          <button type="button" class="link-btn" data-all="languages">Select all</button>
+          <button type="button" class="link-btn" data-none="languages">Clear</button>
+        </div>
+      </div>
+      <div class="search-mini">
+        <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M10 2a8 8 0 0 1 6.3 12.9l5.4 5.4-1.4 1.4-5.4-5.4A8 8 0 1 1 10 2Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z"/></svg>
+        <input class="input" type="search" id="lang-search" placeholder="Search languages...">
+      </div>
+      <div class="chk-chips" id="lang-chips">
+        {% for l in facets.languages %}
+        <div class="chk-chip {{ 'zero' if not l.count }}" data-name="{{ l.name|lower }}">
+          <input type="checkbox" id="lang-{{ loop.index }}" name="languages" value="{{ l.name }}" {% if l.name in sel_langs %}checked{% endif %}>
+          <label for="lang-{{ loop.index }}">{{ l.name }}<span class="cnt">{{ l.count }}</span></label>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="any-note" id="lang-any">Nothing selected = <b>any language</b></div>
+    </div>
+
+    <!-- Categories -->
+    <div class="card">
+      <div class="group-head">
+        <div><h2 style="margin:0">Categories</h2><div class="hint" style="margin:2px 0 0">Udemy's own course categories.</div></div>
+        <div class="group-actions">
+          <button type="button" class="link-btn" data-all="categories">Select all</button>
+          <button type="button" class="link-btn" data-none="categories">Clear</button>
+        </div>
+      </div>
+      <div class="cat-grid">
+        {% for c in facets.categories %}
+        <div class="cat-tile {{ 'zero' if not c.count }}">
+          <input type="checkbox" id="cat-{{ loop.index }}" name="categories" value="{{ c.name }}" {% if c.name in sel_cats %}checked{% endif %}>
+          <label for="cat-{{ loop.index }}">
+            <span class="ci"><svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="{{ cat_icon(c.name) }}"/></svg></span>
+            <span><span class="cn">{{ c.name }}</span><span class="cc" style="display:block">{{ c.count }} available</span></span>
+            <span class="tick">&#10003;</span>
+          </label>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="any-note" id="cat-any">Nothing selected = <b>any category</b></div>
+    </div>
+  </div>
+
+  <!-- Rating -->
+  <div class="card" style="margin-top:16px">
+    <div class="group-head" style="margin-bottom:14px">
+      <div><h2 style="margin:0">Minimum rating</h2><div class="hint" style="margin:2px 0 0">Skip lower-rated courses.</div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap">
+      <div class="seg" role="radiogroup" aria-label="Minimum rating">
+        {% for step in rating_steps %}
+        <input type="radio" id="rt-{{ loop.index }}" name="min_rating" value="{{ step }}" {% if (prefs.min_rating - step)|abs < 0.01 %}checked{% endif %}>
+        <label for="rt-{{ loop.index }}">
+          {% if step == 0 %}Any rating{% else %}<svg viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="m12 2 2.9 6.6L22 9.3l-5 4.8 1.3 7L12 17.8 5.7 21l1.3-7-5-4.8 7.1-.7L12 2Z"/></svg>{{ '%.1f'|format(step) }}+{% endif %}
+        </label>
+        {% endfor %}
+      </div>
+      <label style="display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-size:13.5px;font-weight:600">
+        <span class="switch"><input type="checkbox" id="include-unrated" name="include_unrated" value="1" {% if prefs.include_unrated %}checked{% endif %}><span class="track"><span class="thumb"></span></span></span>
+        Include new, not-yet-rated courses
+      </label>
+    </div>
+    <div class="hint">Most free courses are brand new and have no rating yet, so leaving this on keeps far more courses in play.</div>
+  </div>
+
+  <!-- Sticky save bar -->
+  <div class="save-bar">
+    <div class="sb-text"><span class="dirty-dot" id="dirty-dot" style="display:none"></span><span id="sb-text">Applies to <b>Enroll now</b> and <b>auto-enroll</b>.</span></div>
+    <div style="display:flex;gap:10px">
+      <button type="button" class="btn btn-ghost btn-sm" id="reset-btn">Reset</button>
+      <button type="submit" class="btn btn-primary" id="save-btn">Save filters</button>
+    </div>
+  </div>
+</form>
+
+<script id="facet-data" type="application/json">{{ facets.rows_json|safe }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById("filters-form");
+  var data = JSON.parse(document.getElementById("facet-data").textContent || '{"l":[],"c":[],"r":[]}');
+  var total = data.r.length;
+  var langIdx = {}, catIdx = {};
+  data.l.forEach(function (n, i) { langIdx[n] = i; });
+  data.c.forEach(function (n, i) { catIdx[n] = i; });
+
+  function checked(name) {
+    return Array.prototype.slice.call(form.querySelectorAll('input[name="' + name + '"]:checked')).map(function (el) { return el.value; });
+  }
+  function state() {
+    var r = form.querySelector('input[name="min_rating"]:checked');
+    return { langs: checked("languages"), cats: checked("categories"),
+             min: r ? parseFloat(r.value) : 0, unrated: document.getElementById("include-unrated").checked };
+  }
+  function key(s) { return JSON.stringify([s.langs.slice().sort(), s.cats.slice().sort(), s.min, s.unrated]); }
+  var saved = key(state()), initial = state();
+
+  function short(list) { return list.slice(0, 2).join(", ") + (list.length > 2 ? " +" + (list.length - 2) : ""); }
+  function summary(s) {
+    var parts = [];
+    if (s.langs.length) parts.push(short(s.langs));
+    if (s.cats.length) parts.push(short(s.cats));
+    if (s.min > 0) parts.push(s.min.toFixed(1) + "+ rating");
+    return parts.length ? parts.join(" · ") : "All courses";
+  }
+  function count(s) {
+    var L = {}, C = {};
+    s.langs.forEach(function (n) { if (n in langIdx) L[langIdx[n]] = 1; });
+    s.cats.forEach(function (n) { if (n in catIdx) C[catIdx[n]] = 1; });
+    var n = 0;
+    for (var i = 0; i < data.r.length; i++) {
+      var row = data.r[i];
+      if (s.langs.length && !L[row[0]]) continue;
+      if (s.cats.length && !C[row[1]]) continue;
+      if (s.min > 0) { if (row[2] <= 0) { if (!s.unrated) continue; } else if (row[2] < s.min) continue; }
+      n++;
+    }
+    return n;
+  }
+  function update() {
+    var s = state(), n = count(s);
+    document.getElementById("match-count").textContent = n;
+    document.getElementById("match-bar").style.width = (total ? (n / total) * 100 : 0) + "%";
+    document.getElementById("match-summary").textContent = summary(s);
+    document.getElementById("lang-any").style.visibility = s.langs.length ? "hidden" : "visible";
+    document.getElementById("cat-any").style.visibility = s.cats.length ? "hidden" : "visible";
+    var dirty = key(s) !== saved;
+    document.getElementById("dirty-dot").style.display = dirty ? "" : "none";
+    document.getElementById("sb-text").innerHTML = dirty
+      ? "Unsaved changes - <b>" + n + "</b> of " + total + " courses would match"
+      : "Applies to <b>Enroll now</b> and <b>auto-enroll</b>.";
+  }
+
+  form.addEventListener("change", update);
+
+  document.getElementById("lang-search").addEventListener("input", function () {
+    var q = this.value.trim().toLowerCase();
+    document.querySelectorAll("#lang-chips .chk-chip").forEach(function (c) {
+      c.classList.toggle("hide", q && c.getAttribute("data-name").indexOf(q) === -1);
+    });
+  });
+
+  document.querySelectorAll("[data-all],[data-none]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var name = btn.getAttribute("data-all") || btn.getAttribute("data-none");
+      var on = btn.hasAttribute("data-all");
+      form.querySelectorAll('input[name="' + name + '"]').forEach(function (el) {
+        if (!el.closest(".hide")) el.checked = on;
+      });
+      update();
+    });
+  });
+
+  document.getElementById("reset-btn").addEventListener("click", function () {
+    ["languages", "categories"].forEach(function (name) {
+      var keep = name === "languages" ? initial.langs : initial.cats;
+      form.querySelectorAll('input[name="' + name + '"]').forEach(function (el) { el.checked = keep.indexOf(el.value) !== -1; });
+    });
+    form.querySelectorAll('input[name="min_rating"]').forEach(function (el) { el.checked = Math.abs(parseFloat(el.value) - initial.min) < 0.01; });
+    document.getElementById("include-unrated").checked = initial.unrated;
+    update();
+  });
+
+  form.addEventListener("submit", async function (e) {
+    if (e.submitter && e.submitter.getAttribute("formaction")) { saved = key(state()); return; } // plain POST actions
+    e.preventDefault();
+    var btn = document.getElementById("save-btn");
+    btn.disabled = true; btn.textContent = "Saving...";
+    var body = new URLSearchParams(new FormData(form));
+    try {
+      var res = await fetch("/filters", { method: "POST", body: body,
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest" } });
+      var j = await res.json();
+      if (j.ok) {
+        saved = key(state()); initial = state();
+        window.toast((j.scope === "account" ? "Account filters saved - " : "Default filters saved - ") + j.summary + ".", "ok");
+        if (j.scope === "account") setTimeout(function () { location.reload(); }, 900);
+      } else { window.toast(j.error || "Could not save filters.", "bad"); }
+    } catch (err) { window.toast("Could not save filters - check your connection.", "bad"); }
+    btn.disabled = false; btn.textContent = "Save filters";
+    update();
+  });
+
+  window.addEventListener("beforeunload", function (e) {
+    if (key(state()) !== saved) { e.preventDefault(); e.returnValue = ""; }
+  });
+
+  update();
+  {% if saved %}window.addEventListener("load", function () { window.toast("Filters saved.", "ok"); });{% endif %}
+})();
+</script>
+{% endblock %}

@@ -82,6 +82,25 @@ def read_session(cookie: str, max_age: int = config.SESSION_MAX_AGE):
     except (BadSignature, SignatureExpired, Exception):
         return None
 
+# ── Bookmarklet connect codes ───────────────────────────────────────────────
+# The bookmarklet runs on udemy.com and POSTs cross-site, where the browser does
+# not send our SameSite=Lax session cookie. So it carries this signed code
+# instead: it names the site user plus a nonce the user can rotate to revoke it.
+_connect_serializer = URLSafeTimedSerializer(config.SECRET_KEY, salt="uenroller-connect")
+CONNECT_CODE_MAX_AGE = 60 * 60 * 24 * 365
+
+
+def make_connect_code(user_id: int, nonce: str) -> str:
+    return _connect_serializer.dumps({"uid": user_id, "n": nonce})
+
+
+def read_connect_code(code: str) -> dict | None:
+    try:
+        data = _connect_serializer.loads(code or "", max_age=CONNECT_CODE_MAX_AGE)
+        return data if isinstance(data, dict) and "uid" in data else None
+    except Exception:
+        return None
+
 # ── In-memory rate limiter (per-process; fine for single-instance deploys) ──
 
 class RateLimiter:

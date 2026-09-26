@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Activity - {{ app_name }}{% endblock %}
+{% block page_title %}Activity{% endblock %}
+{% block content %}
+{% set ms = stats.money_saved %}
+{% set src = stats.source %}
+
+<div class="grid" style="grid-template-columns:1fr 1fr 1.4fr;margin-bottom:16px">
+  <div class="card ring-card">
+    <div class="ring-wrap">
+      <svg width="{{ donut_source.size }}" height="{{ donut_source.size }}" viewBox="0 0 {{ donut_source.size }} {{ donut_source.size }}">
+        <circle class="ring-track" cx="{{ donut_source.c }}" cy="{{ donut_source.c }}" r="{{ donut_source.r }}" fill="none" stroke-width="{{ donut_source.stroke }}"/>
+        {% for a in donut_source.arcs %}
+        <circle class="{{ a.cls }}" cx="{{ donut_source.c }}" cy="{{ donut_source.c }}" r="{{ donut_source.r }}" fill="none"
+          stroke-width="{{ donut_source.stroke }}" stroke-linecap="round"
+          stroke-dasharray="{{ a.dasharray }}" stroke-dashoffset="{{ a.dashoffset }}"
+          transform="rotate(-90 {{ donut_source.c }} {{ donut_source.c }})"/>
+        {% endfor %}
+      </svg>
+      <div class="ring-center"><span class="n" data-count="{{ donut_source.total }}">{{ donut_source.total }}</span><span class="l">Total</span></div>
+    </div>
+    <div class="ring-title">By source</div>
+    <div class="legend-row">
+      <span><span class="legend-dot" style="background:var(--teal)"></span>Auto {{ src.auto }}</span>
+      <span><span class="legend-dot" style="background:var(--primary)"></span>Manual {{ src.manual }}</span>
+    </div>
+  </div>
+
+  <div class="card spark-card">
+    <span class="spark-ico"><svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M13 3a9 9 0 1 0 8.94 10H19.9A7 7 0 1 1 13 5.1V11l5 3 .9-1.6L14 9.7V3Z"/></svg></span>
+    <div class="spark-body">
+      <div class="stat-label">This week</div>
+      <div class="spark-value"><span data-count="{{ stats.week_enrolled }}">{{ stats.week_enrolled }}</span> <span style="font-size:12px;color:var(--muted);font-weight:600">enrolled</span></div>
+      <svg class="spark-bars" width="{{ sparkline_week.width }}" height="{{ sparkline_week.height }}" viewBox="0 0 {{ sparkline_week.width }} {{ sparkline_week.height }}" style="margin-top:8px">
+        {% for b in sparkline_week.bars %}
+        <rect class="{{ 'b3' if loop.last else ('b2' if b.v > 0 else 'b1') }}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="2.5"><title>{{ b.v }}</title></rect>
+        {% endfor %}
+      </svg>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head" style="margin-bottom:14px"><div><h2 style="margin:0">Overview</h2><div class="sub">All-time totals</div></div></div>
+    <div class="cmp-list">
+      <div class="cmp-row">
+        <div class="cmp-top"><span class="cmp-label">Total enrolled</span><span class="cmp-value red">{{ stats.total_enrolled }}</span></div>
+        <div class="cmp-track"><div class="cmp-fill red" style="width:{{ stats.milestones.courses.pct }}%"></div></div>
+      </div>
+      <div class="cmp-row">
+        <div class="cmp-top"><span class="cmp-label">Money saved</span><span class="cmp-value teal">{{ ms.symbol }}{{ '%.0f'|format(ms.amount) }}</span></div>
+        <div class="cmp-track"><div class="cmp-fill teal" style="width:{{ stats.milestones.savings.pct }}%"></div></div>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:2px">Shown as progress toward the next milestone ({{ stats.milestones.courses.next }} courses / {{ ms.symbol }}{{ stats.milestones.savings.next }}).</div>
+  </div>
+</div>
+
+<div class="grid row-2" style="margin-bottom:16px">
+  <div class="card">
+    <div class="card-head" style="margin-bottom:14px"><div><h2 style="margin:0">Top categories</h2><div class="sub">What you have been enrolling in</div></div><a class="link-btn" href="/filters">Filters</a></div>
+    {% if stats.top_categories %}
+    {% set cmax = stats.top_categories[0].count %}
+    <div class="bar-list">
+      {% for c in stats.top_categories %}
+      <div class="bar-item">
+        <span class="bi-ico"><svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="{{ cat_icon(c.name) }}"/></svg></span>
+        <div><div class="bi-name">{{ c.name }}</div>
+          <div class="cmp-track"><div class="cmp-fill {{ 'red' if loop.index is odd else 'teal' }}" style="width:{{ ((c.count / cmax) * 100)|round(1) }}%"></div></div></div>
+        <span class="bi-n">{{ c.count }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}<div class="empty" style="padding:24px"><p>Category data appears for courses enrolled from now on.</p></div>{% endif %}
+  </div>
+  <div class="card">
+    <div class="card-head" style="margin-bottom:14px"><div><h2 style="margin:0">Languages</h2><div class="sub">Course languages enrolled</div></div></div>
+    {% if stats.top_languages %}
+    {% set lmax = stats.top_languages[0].count %}
+    <div class="cmp-list">
+      {% for l in stats.top_languages %}
+      <div class="cmp-row">
+        <div class="cmp-top"><span class="cmp-label">{{ l.name }}</span><span class="cmp-value {{ 'teal' if loop.index is odd else 'red' }}">{{ l.count }}</span></div>
+        <div class="cmp-track"><div class="cmp-fill {{ 'teal' if loop.index is odd else 'red' }}" style="width:{{ ((l.count / lmax) * 100)|round(1) }}%"></div></div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}<div class="empty" style="padding:24px"><p>Language data appears for courses enrolled from now on.</p></div>{% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><div><h2 style="margin:0">Enrollment log</h2><div class="sub">{{ total }} course{{ '' if total == 1 else 's' }} enrolled, all time</div></div></div>
+  {% if rows %}
+  <table class="table">
+    <thead><tr><th>Course</th><th>Category</th><th>Value</th><th>Source</th><th>When (UTC)</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td><a href="{{ r.course_url }}" target="_blank" rel="noopener">{{ r.title or r.slug }}</a></td>
+        <td class="dim">{{ r.category or '-' }}{% if r.language %} <span class="tag" style="font-size:10.5px;padding:1px 6px;border:1px solid var(--border);border-radius:999px">{{ r.language }}</span>{% endif %}</td>
+        <td class="dim">{% if r.original_price %}{{ r.currency or '' }} {{ '%.2f'|format(r.original_price) }}{% else %}-{% endif %}</td>
+        <td><span class="chip {{ 'chip-auto' if r.source == 'auto' else 'chip-manual' }}">{{ r.source }}</span></td>
+        <td class="dim">{{ r.created_at[:16].replace('T',' ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if pages > 1 %}
+  <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-top:16px">
+    {% if page > 1 %}<a class="btn btn-ghost btn-sm" href="/activity?page={{ page - 1 }}">Newer</a>{% endif %}
+    <span class="hint">Page {{ page }} of {{ pages }}</span>
+    {% if page < pages %}<a class="btn btn-ghost btn-sm" href="/activity?page={{ page + 1 }}">Older</a>{% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="empty">
+    <div class="big">&#128220;</div>
+    <p>Nothing here yet. Enroll in your first course to start building this log.</p>
+    <a href="/dashboard" class="btn btn-primary">Go to dashboard</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

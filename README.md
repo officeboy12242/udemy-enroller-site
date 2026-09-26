@@ -32,7 +32,7 @@ did while you were away.
 cd E:\Projects\udemy-enroller-site
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
-copy .env.example .env        # then edit SECRET_KEY + SITE_ACCESS_CODE
+copy .env.example .env        # then edit SECRET_KEY
 .venv\Scripts\python run.py   # http://localhost:8123
 ```
 
@@ -43,37 +43,69 @@ First registered account becomes the admin.
 | Variable | Default | Purpose |
 |---|---|---|
 | `SECRET_KEY` | auto-generated | Signs sessions + derives token encryption key |
-| `SITE_ACCESS_CODE` | `changeme-access-code` | Required to register |
 | `PORT` | `8123` | HTTP port |
-| `AUTO_ENROLL_INTERVAL` | `600` | Engine tick, seconds |
+| `AUTO_ENROLL_INTERVAL` | `120` | Engine tick, seconds (matches the tgbot2 reference bot) |
 | `AUTO_ENROLL_ENABLED` | `1` | Auto-enroll ON for new users by default |
-| `ENROLL_BATCH_LIMIT` | `50` | Max offers per run |
 | `FEED_CACHE_TTL` | `900` | Feed cache seconds |
 | `LOGIN_MAX_ATTEMPTS` / `LOGIN_WINDOW_SECONDS` | `8` / `900` | Login rate limit |
 
-## Deployment
+## Deployment (Render)
 
-Render blueprint included (`render.yaml`, free plan, health check
-`/healthz`). Set `SECRET_KEY`, `SITE_ACCESS_CODE`, and mark the session
-cookie secure (add `secure=True` in `app/main.py` `_set_session_cookie`)
-when running behind HTTPS. Data is stored in SQLite under `data/` — on
-Render free plan the disk is ephemeral, so accounts/enrollments reset on
-redeploy; mount a disk or accept the reset.
+A `render.yaml` blueprint is included. Deploy from a Git repo:
+
+1. Push this repo to GitHub (or GitLab).
+2. Render Dashboard → New → Blueprint → pick the repo → Apply. `render.yaml`
+   sets the service up and generates `SECRET_KEY`.
+3. Set `SESSION_SECURE=1` (the deploy is HTTPS).
+
+### Connecting Udemy accounts when hosted
+
+The "open a Udemy login window" flow only works when the app runs on your own
+PC (it drives a real browser on the host machine). When hosted, the app
+automatically switches the Connect buttons to a **bookmarklet** flow at
+`/connect`: drag one bookmark once, then click it on a logged-in udemy.com tab
+to connect an account. Any captcha / OTP is handled in your own browser. The
+Udemy token is posted in the request body only (never in a URL/log), and the
+bookmark carries a signed connect code you can reset from the Connect page.
+
+### Free plan caveats
+
+- **Sleeps when idle** (~15 min), which pauses the 2-minute auto-enroll engine.
+  The built-in self-ping (`KEEPALIVE_INTERVAL`, auto-on when a public URL is
+  known) keeps it awake only while it is already running; to guarantee 24/7,
+  use the `starter` plan or an external uptime pinger hitting `/healthz`.
+- **Ephemeral disk** — the SQLite DB and `.secret_key` under `data/` reset on
+  every deploy/restart, so users, connected accounts and history are lost.
+  For persistence, use the `starter` plan with a mounted disk (see the
+  commented `disk:` block in `render.yaml`).
+
+Relevant env vars: `PUBLIC_URL` (defaults to `RENDER_EXTERNAL_URL`),
+`KEEPALIVE_INTERVAL` (seconds, 0 disables), `LOCAL_BROWSER_LOGIN`
+(auto-off when hosted), `SESSION_SECURE`.
 
 ## Project layout
 
 ```
 app/
-  main.py            FastAPI app: routes, engine, middleware
-  config.py          env configuration
-  security.py        hashing, encryption, CSRF, rate limits, sessions
-  store.py           SQLite persistence
-  udemy_enroller.py  enroller core (from tgbot2, verbatim)
-  udemy_login.py     Udemy email+password login -> token capture
-  feed.py            free-course feed (internal source, not exposed)
-  enroll_service.py  single/batch/auto enrollment orchestration
-  templates/         Jinja2 pages (Udemy theme)
-  static/css/        Udemy-inspired stylesheet
-run.py               uvicorn entry
+  main.py                app factory: middleware, engine lifespan, router mounts
+  config.py              env configuration
+  security.py            hashing, encryption, CSRF, rate limits, sessions
+  db.py                  SQLite connection, schema, migrations
+  models/                data access split by concern
+    users.py accounts.py enrollments.py auto_state.py settings.py
+  services/
+    udemy_client.py      enroller core (course-id extraction, checkout)
+    udemy_login.py       token verification (multi-strategy)
+    browser_grab.py      login-window flow (user signs in, token captured)
+    feed.py              free-course feed (internal source, not exposed)
+    enroll_service.py    unified single/batch/auto pipeline + live progress
+    stats.py             dashboard aggregates + chart series
+  web/
+    deps.py              templates, session, auth dependency, CSRF, render
+    routers/             auth, dashboard, accounts, enroll, pages
+  templates/             Jinja2 pages (Udemy theme, light + dark)
+  static/css/app.css     design system
+  static/js/app.js       animations, live polling, toasts, theme toggle
+run.py                   uvicorn entry
 Dockerfile, render.yaml
 ```

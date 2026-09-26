@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Connect Udemy - {{ app_name }}{% endblock %}
+{% block page_title %}Connect account{% endblock %}
+{% block content %}
+
+<div class="card card-pad-lg" style="max-width:760px;margin-bottom:16px">
+  <h2 style="margin:0 0 4px">Connect your Udemy account</h2>
+  <div class="sub" style="margin-bottom:18px">
+    One-time setup. After this, connecting an account is a single click - no typing, and you handle any captcha or OTP in your own browser.
+  </div>
+
+  <ol class="steps">
+    <li>
+      <span class="step-n">1</span>
+      <div>
+        <b>Drag this button to your bookmarks bar</b>
+        <div class="hint" style="margin:4px 0 10px">If the bookmarks bar is hidden, press Ctrl+Shift+B first.</div>
+        <a class="bm-btn" href="{{ bookmarklet }}" onclick="return false;" draggable="true">&#128218; Send to Enroller</a>
+        <div class="hint" style="margin-top:8px">Can't drag it? Right-click your bookmarks bar &rarr; Add page, and paste the link from "Copy link" below.</div>
+        <button type="button" class="link-btn" id="copy-bm" data-bm="{{ bookmarklet|e }}">Copy link</button>
+      </div>
+    </li>
+    <li>
+      <span class="step-n">2</span>
+      <div>
+        <b>Open <a href="https://www.udemy.com" target="_blank" rel="noopener">udemy.com</a> and log in</b>
+        <div class="hint" style="margin-top:4px">Use the account you want to auto-enroll. Finish any captcha, OTP or 2-step check as normal.</div>
+      </div>
+    </li>
+    <li>
+      <span class="step-n">3</span>
+      <div>
+        <b>On the Udemy tab, click the "Send to Enroller" bookmark</b>
+        <div class="hint" style="margin-top:4px">A new tab confirms the account is connected. Repeat for each Udemy account you want to add.</div>
+      </div>
+    </li>
+  </ol>
+</div>
+
+<div class="card" style="max-width:760px">
+  <div class="card-head" style="margin-bottom:6px"><div><h2 style="margin:0">Security</h2></div></div>
+  <p class="hint" style="margin:0 0 12px">
+    The bookmark carries a private connect code tied to your account. If you ever shared it or want to invalidate the old bookmark, reset it here - then re-drag the button above.
+  </p>
+  <form method="post" action="/connect/rotate" onsubmit="return confirm('Reset the connect code? Your current bookmark will stop working and you will need to add it again.')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn btn-ghost btn-sm" type="submit">Reset connect code</button>
+  </form>
+</div>
+
+{% if local_login %}
+<div class="card" style="max-width:760px;margin-top:16px">
+  <p class="hint" style="margin:0">Running this on your own PC? You can also
+    <a href="/grab-login">open a Udemy login window here</a> instead of the bookmarklet.</p>
+</div>
+{% endif %}
+
+<style>
+.steps { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:20px; }
+.steps li { display:flex; gap:14px; }
+.step-n { width:30px; height:30px; flex:none; border-radius:50%; background:var(--primary-600); color:#fff; font-weight:800; display:inline-flex; align-items:center; justify-content:center; font-size:14px; }
+.bm-btn { display:inline-flex; align-items:center; gap:8px; padding:11px 18px; border-radius:10px; background:linear-gradient(135deg,var(--primary),var(--primary-700)); color:#fff; font-weight:700; font-size:15px; cursor:grab; box-shadow:var(--shadow-md); user-select:none; }
+.bm-btn:hover { color:#fff; }
+</style>
+<script>
+document.getElementById("copy-bm").addEventListener("click", function () {
+  var bm = this.getAttribute("data-bm");
+  navigator.clipboard.writeText(bm).then(function () { window.toast("Bookmark link copied.", "ok"); },
+    function () { window.toast("Copy failed - drag the button instead.", "bad"); });
+});
+</script>
+{% endblock %}

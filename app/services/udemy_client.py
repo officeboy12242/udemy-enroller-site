@@ -44,6 +44,14 @@ class Course:
 
 DEFAULT_CLIENT_ID = "bd2565cb7b0c313f5e9bae44961e8db2"
 
+# Udemy serves the normal course landing HTML (with data-clp-course-id) only to
+# browser-like clients; the okhttp/Android UA used for API calls gets a stripped
+# or blocked response, so HTML page fetches use this instead.
+BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
 
 class UdemyAutoEnroller:
     """
@@ -57,7 +65,7 @@ class UdemyAutoEnroller:
         self.session = requests.Session()
         self.session.cookies.update({
             "access_token": access_token,
-            "client_id": client_id,
+            "client_id": self.client_id,
         })
         self.session.headers.update({
             "User-Agent": "okhttp/4.10.0 UdemyAndroid 9.7.0(515) (phone)",
@@ -73,6 +81,7 @@ class UdemyAutoEnroller:
         })
         self.currency = "inr"
         self.enrolled_slugs = set()
+        self.last_checkout_error = ""
     
     def _get(self, url: str, **kwargs) -> requests.Response:
         for _ in range(3):
@@ -199,10 +208,13 @@ class UdemyAutoEnroller:
             # Normalize a bit
             out = []
             for c in data.get("results", []):
+                curl = c.get("url") or ""
+                if curl.startswith("/"):
+                    curl = "https://www.udemy.com" + curl
                 out.append({
                     "id": c.get("id"),
                     "title": c.get("title"),
-                    "url": c.get("url"),
+                    "url": curl,
                     "headline": c.get("headline"),
                     "is_paid": c.get("is_paid", True),
                     "avg_rating": c.get("avg_rating"),
@@ -240,19 +252,38 @@ class UdemyAutoEnroller:
             return None
     
     def _get_course_id_from_page(self, slug: str) -> tuple:
-        """Get (course_id, is_free) from course page HTML"""
-        r = self._get(f"https://www.udemy.com/course/{slug}/")
+        """Get (course_id, is_free) from the course landing page.
+
+        Fetches with a browser User-Agent (the okhttp/Android UA gets a blocked
+        or stripped page) and falls back to regex if the body attribute moves.
+        """
+        import json as _json
+        import re
+
+        html_headers = {
+            "User-Agent": BROWSER_UA,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "X-Requested-With": None,   # drop the XHR marker so we get full HTML
+        }
+        r = self._get(f"https://www.udemy.com/course/{slug}/", headers=html_headers)
         if not r or r.status_code != 200:
+            log.debug("course page %s -> %s", slug, getattr(r, "status_code", "no response"))
             return None, False
+
+        html = r.text or ""
+        course_id = None
+        is_free = False
         try:
             soup = BeautifulSoup(r.content, "html.parser")
             body = soup.find("body")
-            if not body:
-                return None, False
-            course_id = body.get("data-clp-course-id")
-            if course_id and course_id != "invalid":
-                import json as _json
-                is_free = False
+            if body:
+                cid = body.get("data-clp-course-id")
+                if cid and cid != "invalid":
+                    course_id = str(cid)
                 dma_str = body.get("data-module-args")
                 if dma_str:
                     try:
@@ -260,10 +291,32 @@ class UdemyAutoEnroller:
                         is_free = not dma.get("serverSideProps", {}).get("course", {}).get("isPaid", True)
                     except Exception:
                         pass
-                return str(course_id), is_free
         except Exception as e:
             log.debug(f"Parse error for {slug}: {e}")
-        return None, False
+
+        if not course_id:
+            # Current Next.js/RSC landing pages no longer put the id on <body>.
+            # The id shows up in a deeplink (courseId=NNN) and in escaped JSON.
+            for pat in (
+                r'courseId=(\d+)',                       # udemy://discover?courseId=NNN
+                r'\\?"courseId\\?"\s*:\s*\\?"?(\d+)',    # "courseId":"NNN" (maybe escaped)
+                r'data-clp-course-id="(\d+)"',           # legacy layout
+                r'\\?"course\\?"\s*:\s*{\s*\\?"id\\?"\s*:\s*(\d+)',
+            ):
+                m = re.search(pat, html)
+                if m:
+                    course_id = m.group(1)
+                    break
+
+        if course_id and not is_free:
+            if re.search(r'\\?"isPaid\\?"\s*:\s*false', html) or \
+               re.search(r'\\?"is_paid\\?"\s*:\s*false', html):
+                is_free = True
+
+        if not course_id:
+            log.info("Could not extract course id for slug '%s' (page layout changed?)", slug)
+
+        return course_id, is_free
     
     def _check_coupon(self, course_id: str, coupon: str) -> bool:
         """Check if coupon gives 100% discount"""
@@ -307,8 +360,26 @@ class UdemyAutoEnroller:
     def _ensure_csrf(self):
         csrf = self.session.cookies.get("csrftoken", default="")
         if not csrf:
-            self._get("https://www.udemy.com/payment/checkout/")
-            csrf = self.session.cookies.get("csrftoken", default="")
+            # The checkout page only issues a csrftoken cookie to a browser-like
+            # client; the okhttp/Android UA gets an app response without it.
+            browser_headers = {
+                "User-Agent": BROWSER_UA,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "X-Requested-With": None,
+            }
+            for url in (
+                "https://www.udemy.com/payment/checkout/",
+                "https://www.udemy.com/cart/subscribe/",
+                "https://www.udemy.com/",
+            ):
+                self._get(url, headers=browser_headers)
+                csrf = self.session.cookies.get("csrftoken", default="")
+                if csrf:
+                    break
         return csrf
     
     def _checkout_single(self, course_id: str, coupon_code: str, was_enrolled_before: bool = False) -> str:
@@ -316,6 +387,9 @@ class UdemyAutoEnroller:
         import time as _time
         
         csrf = self._ensure_csrf()
+        if not csrf:
+            self.last_checkout_error = "Could not obtain a Udemy CSRF token."
+            log.info("checkout %s: no csrf token", course_id)
         payload = {
             "checkout_environment": "Marketplace",
             "checkout_event": "Submit",
@@ -332,12 +406,12 @@ class UdemyAutoEnroller:
         headers = {
             "Content-Type": "application/json",
             "Referer": "https://www.udemy.com/payment/checkout/",
-                "Origin": "https://www.udemy.com",
-                "Host": "www.udemy.com",
+            "Origin": "https://www.udemy.com",
+            "Host": "www.udemy.com",
             "x-checkout-is-mobile-app": "false",
             "X-CSRF-Token": csrf,
         }
-        
+
         for _ in range(2):
             r = self._post("https://www.udemy.com/payment/checkout-submit/", json=payload, headers=headers)
             if not r:
@@ -345,12 +419,21 @@ class UdemyAutoEnroller:
             if r.status_code == 504:
                 return "enrolled"
             try:
-                if r.json().get("status") == "succeeded":
-                    return "enrolled"
+                body = r.json()
             except Exception:
-                pass
+                body = None
+            if isinstance(body, dict) and body.get("status") == "succeeded":
+                return "enrolled"
+            # Capture the real reason (without logging any token).
+            detail = ""
+            if isinstance(body, dict):
+                detail = str(body.get("detail") or body.get("message") or body.get("status") or body)[:300]
+            else:
+                detail = (r.text or "")[:300]
+            self.last_checkout_error = f"HTTP {r.status_code}: {detail}"
+            log.info("checkout %s failed -> HTTP %s: %s", course_id, r.status_code, detail)
             _time.sleep(2)
-        
+
         # Check if now subscribed - if we weren't before, this means checkout worked
         check = self._get(f"https://www.udemy.com/api-2.0/users/me/subscribed-courses/{course_id}/")
         if check and check.status_code == 200:

@@ -9,11 +9,19 @@ services:
     envVars:
       - key: SECRET_KEY
         generateValue: true
-      - key: SITE_ACCESS_CODE
-        sync: false
       - key: AUTO_ENROLL_INTERVAL
-        value: "600"
+        value: "120"
       - key: AUTO_ENROLL_ENABLED
         value: "1"
       - key: PYTHON_VERSION
         value: "3.11.9"
+      # RENDER_EXTERNAL_URL is injected by Render automatically; the app uses it
+      # as PUBLIC_URL to build the connect bookmarklet and to self-ping.
+      # NOTE: the free plan still sleeps when idle and wipes the disk on deploy.
+      # For 24/7 auto-enroll and persistent accounts, switch plan to "starter"
+      # and attach a disk mounted at the data dir:
+      # plan: starter
+      # disk:
+      #   name: data
+      #   mountPath: /opt/render/project/src/data
+      #   sizeGB: 1

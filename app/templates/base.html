@@ -1,4 +1,3 @@
-{# Udemy-style base layout #}
 {% set nav_user = user %}
 <!DOCTYPE html>
 <html lang="en">
@@ -6,56 +5,105 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{{ app_name }}{% endblock %}</title>
-<link rel="stylesheet" href="/static/css/udemy.css">
+<meta name="description" content="Automatically enroll your Udemy account in free courses.">
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/css/app.css">
+<script>
+  (function(){ try { var t = localStorage.getItem('ue-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {} })();
+</script>
 </head>
-<body>
-<header class="ud-header">
-  <div class="ud-header-inner">
-    <a class="ud-brand" href="/">
-      <span class="ud-brand-mark">▲</span>
-      <span class="ud-brand-word">udemy</span>
-      <span class="ud-brand-suffix">enroller</span>
-    </a>
-    {% if nav_user %}
-    <nav class="ud-nav">
-      <a href="/dashboard" class="ud-nav-link {% if request.url.path == '/dashboard' %}active{% endif %}">Dashboard</a>
-      <a href="/courses" class="ud-nav-link {% if request.url.path == '/courses' %}active{% endif %}">Free Courses</a>
-      <a href="/history" class="ud-nav-link {% if request.url.path == '/history' %}active{% endif %}">History</a>
-      <a href="/my-courses" class="ud-nav-link {% if request.url.path == '/my-courses' %}active{% endif %}">My Courses</a>
-    </nav>
-    <div class="ud-header-right">
-      <form method="post" action="/logout" class="ud-logout-form">
+<body class="{{ 'has-nav' if nav_user else 'no-nav' }}">
+
+{% if nav_user %}
+<div class="side-scrim" id="side-scrim"></div>
+<aside class="sidebar">
+  <a class="brand" href="/dashboard">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M12 2 2 7l10 5 10-5-10-5Zm0 7.2L4.9 6 12 4.3 19.1 6 12 9.2ZM4 10.5v4.2c0 1.9 3.6 3.8 8 3.8s8-1.9 8-3.8v-4.2l-8 4-8-4Z"/></svg>
+    </span>
+    <span class="brand-text"><span class="brand-word">Udemy Enroller</span><span class="brand-suffix">Auto-enroll</span></span>
+  </a>
+
+  <div class="side-label">Menu</div>
+  <nav class="side-nav" aria-label="Primary">
+    <a href="/dashboard" class="side-link {% if request.url.path == '/dashboard' %}active{% endif %}">
+      <svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M3 13h8V3H3v10Zm0 8h8v-6H3v6Zm10 0h8V11h-8v10Zm0-18v6h8V3h-8Z"/></svg>
+      <span>Dashboard</span></a>
+    <a href="/my-courses" class="side-link {% if request.url.path == '/my-courses' %}active{% endif %}">
+      <svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M4 6a2 2 0 0 1 2-2h9v16H6a2 2 0 0 0-2 2V6Zm14-2h.5A1.5 1.5 0 0 1 20 5.5V18a2 2 0 0 0-2 2V4Z"/></svg>
+      <span>My Courses</span></a>
+    <a href="/filters" class="side-link {% if request.url.path == '/filters' %}active{% endif %}">
+      <svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4Z"/></svg>
+      <span>Filters</span></a>
+    <a href="/activity" class="side-link {% if request.url.path == '/activity' %}active{% endif %}">
+      <svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M13 3a9 9 0 1 0 8.94 10H19.9A7 7 0 1 1 13 5.1V11l5 3 .9-1.6L14 9.7V3Z"/></svg>
+      <span>Activity</span></a>
+  </nav>
+
+  <div class="side-foot">
+    <a href="{{ connect_url }}" class="btn btn-primary btn-block btn-sm"><span class="full">+ Connect account</span></a>
+  </div>
+</aside>
+{% endif %}
+
+<div class="shell">
+  {% if nav_user %}
+  <header class="topbar">
+    <button type="button" class="hamburger" id="hamburger" aria-label="Toggle sidebar">
+      <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M3 6h18v2H3V6Zm0 5h18v2H3v-2Zm0 5h18v2H3v-2Z"/></svg>
+    </button>
+    <div class="crumb">
+      <span class="crumb-dim">Pages /</span>
+      <h1 class="topbar-title">{% block page_title %}{% endblock %}</h1>
+    </div>
+    <div class="topbar-right">
+      <a href="/dashboard" class="engine-pill" id="engine-pill" data-state="loading" title="Auto-enroll engine">
+        <span class="eng-icon" aria-hidden="true">
+          <span class="eng-dot"></span>
+          <svg class="eng-spin" viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="14 44"/></svg>
+        </span>
+        <span class="eng-text"><b id="eng-title">Auto-enroll</b><small id="eng-sub">Checking...</small></span>
+        <span class="eng-bar"><span id="eng-fill"></span></span>
+      </a>
+      <button type="button" class="icon-btn" id="theme-toggle" title="Toggle light / dark" aria-label="Toggle theme">
+        <svg class="ico-sun" viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0-13a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0V5a1 1 0 0 1 1-1Zm0 14a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0v-1a1 1 0 0 1 1-1ZM4 12a1 1 0 0 1-1 1H2a1 1 0 1 1 0-2h1a1 1 0 0 1 1 1Zm18 0a1 1 0 0 1-1 1h-1a1 1 0 1 1 0-2h1a1 1 0 0 1 1 1ZM5.6 5.6a1 1 0 0 1 1.4 0l.7.7A1 1 0 1 1 6.3 7.7l-.7-.7a1 1 0 0 1 0-1.4Zm11 11a1 1 0 0 1 1.4 0l.7.7a1 1 0 1 1-1.4 1.4l-.7-.7a1 1 0 0 1 0-1.4Zm1.4-11a1 1 0 0 1 0 1.4l-.7.7a1 1 0 1 1-1.4-1.4l.7-.7a1 1 0 0 1 1.4 0Zm-11 11a1 1 0 0 1 0 1.4l-.7.7a1 1 0 0 1-1.4-1.4l.7-.7a1 1 0 0 1 1.4 0Z"/></svg>
+        <svg class="ico-moon" viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 1 0 9.8 9.8Z"/></svg>
+      </button>
+      <button type="button" class="icon-btn bell-btn" title="Enrolled today" aria-label="Enrolled today">
+        <svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm7-6.2V11c0-3.2-1.7-5.9-4.7-6.6V4a2.3 2.3 0 0 0-4.6 0v.4C6.7 5.1 5 7.7 5 11v4.8L3 17.8V19h18v-1.2l-2-2Z"/></svg>
+        {% if bell_count %}<span class="bell-badge">{{ bell_count if bell_count < 100 else '99+' }}</span>{% endif %}
+      </button>
+      <span class="user-chip">
+        <span class="avatar-sm">{{ (user.email or 'U')[:1]|upper }}</span>
+        <span class="em">{{ user.email.split('@')[0] if user.email else 'Account' }}</span>
+      </span>
+      <form method="post" action="/logout" class="inline-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button class="ud-btn ud-btn-ghost ud-btn-sm" type="submit">Log out</button>
+        <button class="btn btn-ghost btn-sm" type="submit">Log out</button>
       </form>
     </div>
-    {% endif %}
-  </div>
-</header>
+  </header>
+  {% endif %}
 
-<main class="ud-main">
-{% block content %}{% endblock %}
-</main>
+  <main class="main">{% block content %}{% endblock %}</main>
 
-<footer class="ud-footer">
-  <div>Udemy Enroller — personal automation tool. Not affiliated with Udemy, Inc.</div>
-  <div class="ud-footer-dim">© {{ year }}</div>
-</footer>
+  {% if nav_user %}
+  <footer class="ftr">
+    <div>Udemy Enroller - personal automation tool. Not affiliated with Udemy, Inc.</div>
+    <div class="dim">&copy; {{ year }}</div>
+  </footer>
+  {% endif %}
+</div>
 
-<script>
-async function postForm(url, data) {
-  const body = new URLSearchParams(data);
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
-    body,
-  });
-  let json = null;
-  try { json = await res.json(); } catch (e) { /* non-JSON */ }
-  return {ok: res.ok, status: res.status, json};
-}
-</script>
+{% if not nav_user %}
+<button type="button" class="icon-btn auth-theme" id="theme-toggle" title="Toggle light / dark" aria-label="Toggle theme">
+  <svg class="ico-sun" viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0-13a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0V5a1 1 0 0 1 1-1Zm0 14a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0v-1a1 1 0 0 1 1-1ZM4 12a1 1 0 0 1-1 1H2a1 1 0 1 1 0-2h1a1 1 0 0 1 1 1Zm18 0a1 1 0 0 1-1 1h-1a1 1 0 1 1 0-2h1a1 1 0 0 1 1 1ZM5.6 5.6a1 1 0 0 1 1.4 0l.7.7A1 1 0 1 1 6.3 7.7l-.7-.7a1 1 0 0 1 0-1.4Zm11 11a1 1 0 0 1 1.4 0l.7.7a1 1 0 1 1-1.4 1.4l-.7-.7a1 1 0 0 1 0-1.4Zm1.4-11a1 1 0 0 1 0 1.4l-.7.7a1 1 0 1 1-1.4-1.4l.7-.7a1 1 0 0 1 1.4 0Zm-11 11a1 1 0 0 1 0 1.4l-.7.7a1 1 0 0 1-1.4-1.4l.7-.7a1 1 0 0 1 1.4 0Z"/></svg>
+  <svg class="ico-moon" viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 1 0 9.8 9.8Z"/></svg>
+</button>
+{% endif %}
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<script src="/static/js/app.js" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
