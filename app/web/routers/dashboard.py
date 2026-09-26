@@ -27,12 +27,18 @@ def dashboard(request: Request):
     s = stats.dashboard_stats(user["id"])
     accounts = accounts_model.get_accounts(user["id"])
     overrides = prefs_model.accounts_with_override(user["id"])
+    auto = auto_model.get_auto_state(user["id"])
+    # Global auto is on, accounts exist, but none has its own auto switch on:
+    # the engine would silently enroll nothing. Warn about it on the dashboard.
+    auto_needs_account = bool(auto.get("enabled")) and bool(accounts) and \
+        not any(a["is_active"] and a["auto_enroll"] for a in accounts)
     return render(request, "dashboard.html", {
         "accounts": accounts,
+        "auto_needs_account": auto_needs_account,
         "account_filters": {a["id"]: {"custom": a["id"] in overrides,
                                       "summary": prefs_model.summary(prefs_model.get_prefs(user["id"], a["id"]))}
                             for a in accounts},
-        "auto": auto_model.get_auto_state(user["id"]),
+        "auto": auto,
         "recent": enroll_model.get_history(user["id"], limit=8),
         "stats": s,
         "interval_min": config.AUTO_ENROLL_INTERVAL // 60,

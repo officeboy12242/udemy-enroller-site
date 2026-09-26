@@ -23,7 +23,28 @@ def set_auto_enabled(user_id: int, enabled: bool) -> None:
 
 
 def set_auto_running(user_id: int, running: bool) -> None:
-    get_db().auto_state.update_one({"_id": user_id}, {"$set": {"running": int(running)}}, upsert=True)
+    get_db().auto_state.update_one(
+        {"_id": user_id}, {"$set": {"running": int(running), "updated_at": now_iso()}}, upsert=True)
+
+
+def reset_stale_running(max_age_seconds: int) -> int:
+    """Clear a stuck running=1 flag whose run started too long ago (crashed/hung),
+    so it can't block future auto ticks forever. Returns how many were reset.
+
+    Also clears running=1 docs that never got updated_at (pre-dating the stamp),
+    since those would otherwise stay stuck forever.
+    """
+    from datetime import datetime, timezone, timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)).isoformat(timespec="seconds")
+    res = get_db().auto_state.update_many(
+        {"running": 1, "$or": [
+            {"updated_at": {"$lt": cutoff}},
+            {"updated_at": {"$exists": False}},
+            {"updated_at": None},
+        ]},
+        {"$set": {"running": 0, "updated_at": now_iso()}},
+    )
+    return res.modified_count
 
 
 def update_auto_run(user_id: int, last_result: str, enrolled_count: int, next_run_iso: str | None) -> None:

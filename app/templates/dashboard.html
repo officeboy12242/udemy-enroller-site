@@ -6,6 +6,14 @@
 {% set ms = stats.money_saved %}
 {% set src = stats.source %}
 
+{% if auto_needs_account %}
+<div class="warn-banner">
+  <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M1 21h22L12 2 1 21Zm12-3h-2v-2h2v2Zm0-4h-2v-4h2v4Z"/></svg>
+  <div><b>Auto-enroll is on, but no account is set to auto-enroll.</b>
+    Nothing will enroll automatically until you turn on <b>Auto</b> for at least one account below.</div>
+</div>
+{% endif %}
+
 <!-- Row 1: source ring, accounts ring, comparison bars, mini metrics -->
 <div class="grid top-row" style="margin-bottom:16px">
   <div class="card ring-card">

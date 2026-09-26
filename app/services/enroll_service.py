@@ -385,7 +385,10 @@ def _live_run(user_id: int, accts: list, source: str) -> dict:
         _update_batch(user_id, status="stopped" if stopped else "done", finished_at=_now_iso(),
                       current=None, phase=None, enrolled=total_enrolled,
                       errors=_get_batch(user_id)["errors"] + errors)
+        fb = _get_batch(user_id)
         return {"ok": True, "enrolled": total_enrolled, "filtered": filtered_total,
+                "already": fb.get("already", 0), "expired": fb.get("expired", 0),
+                "failed": fb.get("failed", 0),
                 "error": errors[0] if errors else None, "stopped": stopped}
     except Exception as e:
         log.exception("live run crashed")
@@ -423,11 +426,16 @@ def run_auto_enroll_for_user_and_record(user_id: int) -> dict:
     try:
         res = run_auto_enroll_for_user(user_id, source="auto")
         if res.get("ok"):
-            msg = f"OK - {res['enrolled']} new course(s) enrolled"
+            parts = [f"{res['enrolled']} new"]
+            if res.get("already"):
+                parts.append(f"{res['already']} already owned")
+            if res.get("expired"):
+                parts.append(f"{res['expired']} expired")
+            if res.get("failed"):
+                parts.append(f"{res['failed']} failed")
             if res.get("filtered"):
-                msg += f", {res['filtered']} skipped by filters"
-            if res.get("stopped"):
-                msg += " (stopped)"
+                parts.append(f"{res['filtered']} filtered out")
+            msg = "OK - " + ", ".join(parts) + (" (stopped)" if res.get("stopped") else "")
             auto_model.update_auto_run(user_id, msg, res["enrolled"], _next_run_iso())
         else:
             auto_model.update_auto_run(user_id, res.get("error") or res.get("reason", "skipped"),
@@ -439,6 +447,10 @@ def run_auto_enroll_for_user_and_record(user_id: int) -> dict:
 
 def run_auto_enroll_all_users() -> int:
     total = 0
+    # Recover from a run that crashed/hung with running=1 still set (else that
+    # user would be skipped forever). Must outlast a healthy long run (feed +
+    # large enroll catalog routinely exceeds 10 min) — 1h floor.
+    auto_model.reset_stale_running(max(3600, config.AUTO_ENROLL_INTERVAL * 30))
     for user_id in auto_model.users_with_auto_enabled():
         try:
             total += run_auto_enroll_for_user_and_record(user_id).get("enrolled", 0)
